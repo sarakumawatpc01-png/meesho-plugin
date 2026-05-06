@@ -25,7 +25,7 @@ if ( ! function_exists( 'meesho_master_verify_ajax_nonce' ) ) {
 
 		$valid = ! empty( $nonce ) && ( wp_verify_nonce( $nonce, 'mm_nonce' ) || wp_verify_nonce( $nonce, 'meesho_nonce' ) );
 		if ( ! $valid ) {
-			wp_send_json_error( array( 'message' => 'Invalid nonce' ), 403 );
+			wp_send_json_error( array( 'message' => 'Invalid request' ), 403 );
 		}
 	}
 }
