@@ -1,183 +1,167 @@
-# Meesho Master v6 — Master Implementation Blueprint & Handoff Checklist
+# Meesho Master v6 — Updated Gap Analysis Todo (Remaining Work)
 
-> **Final Version for Handoff.** This document contains 100% of the technical specifications required to complete the Meesho Master v6 plugin.
-
----
-
-## 1. Immediate Critical Bug Fixes (Status: Completed)
-- [x] **Bug 1: Fatal PHP Error (The Main Culprit):** 
-  - **Issue:** `class-meesho-seo.php` contained duplicate declarations of `inject_schema()` (Line 51 and 309) and `inject_fallback_meta()` (Line 60 and 319).
-  - **Resolution:** Removed the first (older) pair of methods. Retained the second versions as they include JSON-LD validation.
-  - **Outcome:** The plugin can now be activated without a fatal crash.
-- [x] **Bug 2: Plugin Deletion Blocked:**
-  - **Issue:** WordPress prevents plugin deletion if the plugin file triggers a fatal error during loading.
-  - **Resolution:** Fixing Bug 1 automatically unblocked the "Delete" button in the WP Admin.
-- [x] **Bonus Fix: Empty `uninstall.php` Cleanup:**
-  - **Issue:** The original `uninstall.php` was a stub with no cleanup logic.
-  - **Resolution:** Implemented a full purge script that drops all 9 custom tables (`mm_scraped_products`, `mm_seo_suggestions`, etc.), deletes all `meesho_master_settings` options, and clears all scheduled cron events.
+> Source of truth: `/home/runner/work/meesho-plugin/meesho-plugin/meesho-master-v6-master-prompt.md`  
+> Goal: Track everything still required to fully reach v6 spec.  
+> Scope: Only remaining build/fix items (what is missing or only partial in current repo).
 
 ---
 
-## 2. GitHub Repository Logic Extraction (§8)
-Analyze these repositories deeply. Extract only the logic/patterns specified. **Do not copy code.**
+## 0) Gap Findings Not Covered Properly in Previous Todo
 
-### 2.1 [ngstcf/ai-seo-auditor](https://github.com/ngstcf/ai-seo-auditor)
-- **Files to Analyze:** `auditor.py` or equivalent logic files.
-- **Logic to Extract:** The exhaustive SEO audit checklist. Specifically, extract their word-count thresholds (e.g., what they consider "thin" content) and their keyword density calculations.
-- **Implementation:** Update `MM_SEO_Scorer` in PHP to use these deterministic thresholds for the SEO Score (0-100).
-
-### 2.2 [AgriciDaniel/claude-seo](https://github.com/AgriciDaniel/claude-seo)
-- **Files to Analyze:** Prompt templates in the `prompts/` directory.
-- **Logic to Extract:** Prompt structures for generating "Click-Through Rate (CTR) optimized" meta titles and descriptions.
-- **Implementation:** Merge these patterns into the system prompt of `MM_SEO_Analyzer`.
-
-### 2.3 [zubair-trabzada/geo-seo-claude](https://github.com/zubair-trabzada/geo-seo-claude)
-- **Files to Analyze:** Logic files related to "Generative Engine Optimization."
-- **Logic to Extract:** Rules for "Citability" (e.g., how to structure a paragraph so an AI crawler like Claude will quote it).
-- **Implementation:** Use these rules to define the `citability_block` suggestion type in our engine.
-
-### 2.4 [every-app/open-seo](https://github.com/every-app/open-seo)
-- **Files to Analyze:** `templates/json-ld/` or similar schema files.
-- **Logic to Extract:** Standardized templates for `FAQPage`, `HowTo`, and `Product` schema.
-- **Implementation:** Integrate these templates into the `MM_Schema_Generator` class.
-
-### 2.5 [aaron-he-zhu/seo-geo-claude-skills](https://github.com/aaron-he-zhu/seo-geo-claude-skills)
-- **Files to Analyze:** Readme and signal documentation.
-- **Logic to Extract:** Specific authority signals (e.g., factual density, brand mentions) that trigger positive GEO responses.
-- **Implementation:** Add these as scoring factors in the `GEO Score` section of `MM_SEO_Scorer`.
+- [ ] **Architecture mismatch is still unresolved:** required `MM_*` class architecture and file layout in `includes/` is not implemented (current code still uses `Meesho_Master_*` modules in `includes/modules/`).
+- [ ] **Core v6 classes are missing:** `class-seo-crawler.php`, `class-seo-scorer.php`, `class-seo-safety.php`, `class-seo-implementor.php`, `class-seo-geo.php`, `class-schema-generator.php`, `class-logger.php`, `class-crypto.php`, `class-dataforseo.php`, and required v6 wiring in `class-ajax.php`.
+- [ ] **DB schema contract is not aligned:** required `mm_*` table design from v6 prompt is not fully implemented (current DB uses `meesho_*` table naming and different columns).
+- [ ] **Security contract is not aligned:** nonce key should be `mm_nonce` (currently `meesho_nonce`), strict secret scrubbing and Copilot hard denials are incomplete.
+- [ ] **Scheduler contract is not aligned:** required IST-specific morning/evening events and strict priority queue scan sequence are not implemented as specified.
+- [ ] **UI contract is not aligned:** v6 requires vanilla `fetch` + `async/await`; current admin JS is jQuery-based.
+- [ ] **llms.txt write path is non-compliant:** must use `WP_Filesystem`; current implementation uses `file_put_contents()`.
+- [ ] **v5 → v6 bridge requirements are not implemented:** `mm_seo_audit`, `mm_apply_meta`, `mm_apply_links`, `mm_bulk_meta`, `mm_suggest_links` are not fully wired to v6 data tables/flows.
 
 ---
 
-## 3. Database Schema Blueprint (§3)
-Every table must use the `mm_` prefix and `$wpdb->get_charset_collate()`.
+## 1) Agent Execution Backlog (All Tasks I Need To Do)
 
-### 3.1 New Tables
-1. **mm_seo_suggestions:**
-   - `id`: BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-   - `suggestion_type`: VARCHAR(60) (Values: meta_title, meta_desc, content, schema, faq, howto_schema, internal_link, alt_tag, llms_txt, citability_block, statistics_inject)
-   - `current_value`: LONGTEXT
-   - `suggested_value`: LONGTEXT
-   - `safe_to_apply`: TINYINT(1) (Must be 1 for meta/alt/links if confidence >= 85)
-   - `status`: VARCHAR(20) (Default: 'pending')
-2. **mm_audit_log:**
-   - `old_value`: LONGTEXT
-   - `new_value`: LONGTEXT
-   - `purge_after`: DATETIME (Current time + 15 days)
+### 1.1 Architecture + Bootstrap
+- [ ] Refactor plugin structure to v6 delivery format in root `includes/` with `MM_` class prefix.
+- [ ] Keep backward compatibility with existing v5 behaviors and handlers (no breaking removals/renames).
+- [ ] Ensure plugin bootstrap loads all required v6 classes and registers hooks cleanly.
 
-### 3.2 Migrations
-- **Table:** `mm_orders`
-- **Columns to Add:** `meesho_order_id` (VARCHAR), `fulfillment_status` (VARCHAR), `sla_flagged` (TINYINT).
+### 1.2 Database & Migrations
+- [ ] Implement/align v6 tables: `mm_seo_suggestions`, `mm_seo_post_scores`, `mm_seo_score_history`, `mm_audit_log`, `mm_seo_runs`, `mm_copilot_threads`, `mm_ranking_data`.
+- [ ] Add/align required columns on `mm_orders` (`meesho_order_id`, `meesho_tracking_id`, `meesho_account`, `fulfillment_status`, `sla_flagged`, `cod_risk_flag`, `fulfilled_by`).
+- [ ] Add indexes and constraints exactly per v6 schema spec.
+- [ ] Add version-guarded migration logic and safe upgrades.
 
----
+### 1.3 Crypto + Settings Hardening
+- [ ] Build `MM_Crypto` using AES-256-CBC with key derived from `AUTH_KEY + SECURE_AUTH_SALT` as specified.
+- [ ] Migrate encrypted setting keys to v6 naming and wildcard encryption behavior (`*_key`, `*_secret`, `*_credentials`).
+- [ ] Add/align all v6 settings keys (`mm_scrapling_url`, `mm_markup_type`, `mm_price_round`, `mm_openrouter_*`, `mm_gsc_credentials`, `mm_hotjar_id`, etc.).
+- [ ] Ensure no plaintext secrets are returned in AJAX responses, logs, or UI output.
 
-## 4. Core Engine Logic Specs (§4.3)
+### 1.4 SEO Crawler + Keyword Resolution
+- [ ] Implement `MM_SEO_Crawler::collect_post_data()` with exact required return shape and all keys always present.
+- [ ] Implement SEO plugin detection (`yoast|rankmath|aioseo|none`) and read priorities for title/meta/canonical/schema.
+- [ ] Implement focus keyword resolution priority and persist fallback result into `_mm_focus_keyword`.
+- [ ] Add schema-source detection (`post_meta`, `post_content`, `seo_plugin`) and existing-schema extraction flow.
 
-### 4.1 Target Keyword Resolution (§4.3.3)
-1. Check Yoast Meta: `_yoast_wpseo_title` (priority) -> `_yoast_wpseo_focuskw`.
-2. Check RankMath Meta: `rank_math_title` (priority) -> `rank_math_focus_keyword`.
-3. Check MM Meta: `_mm_focus_keyword`.
-4. Fallback: Extract first 2-3 words from title, excluding stop words: *a, an, the, in, on, of, for, with, to, is, are, was, were, be, at, by, from, and, or, but*.
+### 1.5 Deterministic Scoring Engine
+- [ ] Implement `MM_SEO_Scorer` with exact SEO/AEO/GEO point model from v6 prompt.
+- [ ] Implement WooCommerce product-specific scoring overrides (300-word threshold, schema requirement, AEO redistribution).
+- [ ] Add brand mention, authority signal, factual density, and llms.txt accessibility scoring checks per spec.
 
-### 4.2 PHP Scoring Engine — Point Distribution (§4.3.4)
-Scoring must be 100% deterministic PHP logic.
-- **SEO Score (100 pts):**
-  - Meta Title 50-60 chars (+10), Meta Desc 120-160 chars (+5), Keyword in title (+3), Keyword in desc (+2).
-  - Exactly 1 H1 (+7), H1 contains keyword (+4), at least 2 H2s (+4).
-  - Keyword in first 100 words (+7), density 1-3% (+8).
-  - ≥1 internal link (+5), ≥3 links (+10).
-  - Posts: ≥500 words (+20). Products: ≥300 words (+20).
-  - All images have alt (+8), Schema present (+6), Canonical matches permalink (+6).
-- **AEO Score (100 pts):**
-  - Direct answers (Regex: `?` + ≤40 word paragraph): 1 found (+15), ≥3 found (+30).
-  - FAQ Schema present (+10), H3/H4 with `?` text ≥3 (+10).
-  - Avg sentence length ≤20 words (+20).
-  - `<ul>` or `<ol>` present (+8), `<table>` present (+7).
-- **GEO Score (100 pts):**
-  - Citability blocks (120-180 words): 1 found (+15), ≥2 found (+30).
-  - Factual density (Regex: `\d+%` or `₹\d+`): ≥3 (+20).
-  - Brand name mentions (+10), Author/Date signals (+10).
-  - `llms.txt` exists (+10), allows GPTBot/ClaudeBot (+5).
+### 1.6 AI Analyzer + Failure Handling
+- [ ] Implement `MM_SEO_Analyzer::analyze()` and `call_with_retry()` with exact failure behavior (batch skip, retry once on timeout, strict invalid-JSON discard).
+- [ ] Implement model fallback to `openai/gpt-4o-mini` when configured model fails/unavailable.
+- [ ] Enforce suggestion cap (`mm_seo_max_suggestions`, default 10).
+- [ ] Use v6 system prompt contract and strict JSON-only parsing.
 
-### 4.3 Crawler Data Structure (§4.3.2)
-`MM_SEO_Crawler::collect_post_data` must return this exact array:
-```php
-[
-  'post_id' => int,
-  'title' => string,
-  'content' => string,
-  'meta_title' => string,
-  'meta_desc' => string,
-  'focus_keyword' => string,
-  'headings' => ['h1'=>[], 'h2'=>[]],
-  'images' => [['src'=>'', 'alt'=>'']],
-  'seo_plugin' => 'yoast'|'rankmath'|'aioseo'|'none',
-  'gsc_metrics' => ['clicks'=>0, 'impressions'=>0]
-]
-```
+### 1.7 Safety + Implementor + Logging
+- [ ] Implement `MM_SEO_Safety::can_auto_apply()` and schema exception `can_auto_apply_schema()` exactly per decision table.
+- [ ] Implement `MM_SEO_Implementor::apply()` with mandatory pre-write logging and safe write paths.
+- [ ] Write meta to MM fallback keys plus active SEO plugin keys simultaneously.
+- [ ] Prevent duplicate schema output when SEO plugins already handle schema.
+- [ ] Implement `MM_Logger::log_before_change()` and ensure every destructive write logs old/new values.
 
----
+### 1.8 Scheduler + Run Queue
+- [ ] Register IST cron events (`mm_seo_run_morning`, `mm_seo_run_evening`) at configured times.
+- [ ] Implement 25+ hour stale-run admin notice and “Run Scan Now” action.
+- [ ] Implement required scan sequence with run-row init/finalize and priority queue logic (never-scanned → modified → oldest).
+- [ ] Upsert `mm_seo_post_scores` and append `mm_seo_score_history` every run.
 
-## 5. Security & Safety (§4.6, §4.4)
-- **Encryption:** AES-256-CBC. Key = `hash_pbkdf2('sha256', AUTH_KEY, SECURE_AUTH_SALT, 1000, 32)`.
-- **Copilot Allowlist:**
-  - `wp_update_post` (title/content/status).
-  - `wc_get_product()->set_regular_price()->save()`.
-  - `MM_SEO_Implementor::apply()`.
-- **Hard Denials:** Block `DROP`, `TRUNCATE`, `DELETE FROM`, `wp_delete_site`. Scrub secret keys from chat output.
+### 1.9 GEO Features + llms.txt
+- [ ] Move llms.txt generation to `MM_SEO_Geo::generate_llms_txt()` using `WP_Filesystem` only.
+- [ ] Generate required llms.txt template (bots, disallows, sitemap, About block, metadata).
+- [ ] Implement `statistics_inject` suggestion generation trigger when factual density is low.
+- [ ] Implement `citability_block` flow (manual approval only, insertion position rule).
 
----
+### 1.10 Schema Generator
+- [ ] Implement `MM_Schema_Generator` supporting `Article`, `Product`, `FAQ`, `HowTo`, `BreadcrumbList`.
+- [ ] Add JSON validation and deduplication rules for same `@type`.
+- [ ] Enforce conflict rule: no duplicate wp_head schema when schema is plugin-managed.
+- [ ] Enforce Product schema minimum required fields.
 
-## 6. Admin UI Standards (§5)
-- **Searchable Page Table:** Vanilla JS `fetch()` to get post list. Filter by title in real-time.
-- **Skeleton Loaders:** pulsing CSS: `@keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 0.8; } 100% { opacity: 0.4; } }`.
-- **Mobile Responsive:** 100% width on 375px. Hide non-essential columns on mobile using `@media`.
+### 1.11 Import + Orders Extensions
+- [ ] Align duplicate PID checks with v6 requirements (including post meta `_mm_meesho_pid` path and user-facing link flow).
+- [ ] Ensure pricing rules map exactly to `mm_markup_type`, `mm_markup_value`, `mm_price_round` semantics.
+- [ ] Ensure review import stores full rating JSON and review images via media sideload flow.
+- [ ] Implement/align order tracker editable columns, SLA flag logic, and `mm_save_fulfillment` audit logging path.
+- [ ] Enforce COD first-order phone risk rule from v6 requirements.
 
----
+### 1.12 Copilot v6
+- [ ] Implement v6 Copilot panel behavior (global admin access, thread persistence in `mm_copilot_threads`, model cache/free-model toggle).
+- [ ] Enforce action allowlist and hard denials (`DROP`, `TRUNCATE`, `DELETE FROM`, `wp_delete_site`, secret reads, disabled-copilot flag, bulk delete guard).
+- [ ] Enforce destructive-action confirmation even when auto-implement is enabled.
+- [ ] Strip secret option values from all Copilot output text before UI render.
+- [ ] Log all Copilot executions to `mm_audit_log` and add “Undo last action” flow.
 
-## 7. Automation & Cron (§4.3.9)
-- **Morning Scan:** 08:00 IST (Asia/Kolkata).
-- **Evening Scan:** 20:00 IST (Asia/Kolkata).
-- **Admin Notice:** If `time() - last_run > 90000` seconds, display: "SEO scan hasn't run in 25+ hours. [Run Now]".
+### 1.13 Analytics v6
+- [ ] Heatmap tab: embed Hotjar iframe and AI analysis cards with Apply/Dismiss actions.
+- [ ] Ranking tracker: implement weekly top-50 keyword ingestion, competitor comparison support, 24h caching.
+- [ ] Align storage to `mm_ranking_data` schema.
+- [ ] Enhance email reports to include full v6 metrics set and sender fallback behavior.
 
-### 7.1 Scan Run Sequence (Mandatory)
-Every scan (Cron or Manual) must follow this exact sequence:
-1. **Initialize Run:** Insert row in `mm_seo_runs` with `status = running`.
-2. **Fetch Queue (Priority Order):**
-   - **P1:** Posts with NO entry in `mm_seo_post_scores` (Never scanned).
-   - **P2:** Posts where `post_modified > last_scanned` date.
-   - **P3:** Posts with the oldest `last_scanned` date.
-   - *Batch Size: Max 10 items.*
-3. **Execute per Post:**
-   - `MM_SEO_Crawler::collect_post_data($post_id)` -> Native PHP extraction.
-   - `MM_SEO_Scorer::score($data)` -> Deterministic PHP scoring.
-   - `MM_SEO_Analyzer::analyze($data)` -> AI logic with `call_with_retry`.
-   - `MM_SEO_Implementor::auto_apply()` -> Apply meta/alt/links if safety filter passes.
-4. **Finalize Run:** Update `mm_seo_runs` with `status = done`, finished counts, and `finished_at` timestamp.
+### 1.14 Admin UI v6
+- [ ] Convert new JS implementation to vanilla `fetch` + `async/await` (no new jQuery-based flows).
+- [ ] Implement SEO score dashboard table requirements (sorting, pending counts, actions, scan selected, export CSV, plugin status banner).
+- [ ] Implement suggestions queue filters (post type/priority/type/status/score range) and bulk reject.
+- [ ] Implement per-post slide-in panel (score factor breakdown, trend chart, suggestions, audit history, undo actions).
+- [ ] Ensure 375px mobile usability, skeletons, toasts, confirmation modal, pagination defaults, and progress bars.
 
----
+### 1.15 v5 Handler Bridge Work
+- [ ] Wire `mm_seo_audit` to scorer + post-score upsert + score-history insert.
+- [ ] Wire `mm_apply_meta` / `mm_apply_links` / `mm_bulk_meta` to `mm_audit_log` writes.
+- [ ] Wire `mm_suggest_links` to `mm_seo_suggestions` (`internal_link`, `pending`).
+- [ ] Preserve old handler behavior while adding v6 table writes.
 
-## 8. Product & Order Extension (§4.1, §4.2)
-- **Review Import:** Store rating JSON `{"5": X, "4": Y...}`. Use `media_sideload_image()` for review photos.
-- **Pricing:** Apply `mm_markup_value` (percentage or flat). Round to nearest 10, 50, or 99 based on `mm_price_round`.
-- **Order SLA:** Red flag if `fulfillment_status == 'pending'` AND `created_at < (current_time - 4 hours)`.
+### 1.16 Security + Performance Compliance
+- [ ] Standardize all AJAX handlers to `check_ajax_referer('mm_nonce','nonce')` + `current_user_can('manage_options')`.
+- [ ] Ensure all DB queries use `$wpdb->prepare()` and remove raw interpolated queries.
+- [ ] Remove any synchronous external HTTP calls from restricted hooks.
+- [ ] Add transient caching requirements (GSC 24h, models 1h, llms check 6h).
+- [ ] Enforce request memory/performance constraints and batch limits.
 
----
+### 1.17 Undo, Retention, and Purges
+- [ ] Implement v6 `MM_Undo::revert()` + `revert_last()` behavior with `undone` tracking.
+- [ ] Implement weekly purge logic for old audit snapshots (`old_value = NULL`, `undoable = 0`).
+- [ ] Implement 90-day `mm_seo_score_history` purge.
+- [ ] Implement soft-delete status `mm_deleted` and restore flow to `publish`.
 
-## 9. Final Testing Checklist (§9)
-- [ ] Duplicate PID detection returns error + link.
-- [ ] Product variations have correct size/price/SKU.
-- [ ] AI failure skips batch, logs error, continues at next cron.
-- [ ] Schema validates at schema.org/validator.
-- [ ] llms.txt exists at site root with GPTBot/ClaudeBot rules.
-- [ ] Undo restores old value within 15-day window.
-- [ ] Copilot cannot read `mm_*_key` option values.
-- [ ] All queries use `$wpdb->prepare()`.
+### 1.18 External Logic Extraction Tasks
+- [ ] Analyze `ngstcf/ai-seo-auditor` and map deterministic scoring/checklist gaps.
+- [ ] Analyze `AgriciDaniel/claude-seo` prompt patterns and merge into analyzer prompt.
+- [ ] Analyze `zubair-trabzada/geo-seo-claude` for citability + crawler-accessibility logic.
+- [ ] Analyze `every-app/open-seo` JSON-LD template patterns for schema completeness.
+- [ ] Analyze `aaron-he-zhu/seo-geo-claude-skills` for missing SEO+GEO authority signals.
+- [ ] Create `MM_DataForSEO` stub interface per v6 spec (non-implemented methods returning `WP_Error`).
 
 ---
 
-## 10. Handoff Instruction for the Next Agent
-1. **Refactor Structure:** Move all logic into root `includes/` using the `MM_` class prefix.
-2. **Implement Crypto:** Create `class-crypto.php` first to secure all key fields.
-3. **Execute Logic Extraction:** Analyze the 5 GitHub repos and update the Scorer/Analyzer prompts.
-4. **Build the SEO Dashboard:** Implement the searchable table and the per-post detail slide-in panel.
-5. **Finalize Analytics:** Connect the GSC API and implement the email report cron.
+## 2) Validation & QA Checklist (Must Pass Before Marking v6 Complete)
+
+### 2.1 Functional
+- [ ] Import URL flow and HTML fallback both pass end-to-end.
+- [ ] Duplicate PID handling returns explicit error with link.
+- [ ] Order tracker v6 column behaviors pass.
+- [ ] SEO run queue and cron/manual scan flows pass.
+- [ ] llms.txt generation and GEO scoring checks pass.
+
+### 2.2 Safety
+- [ ] Non-safe suggestion types never auto-apply.
+- [ ] Schema auto-apply only when schema exception conditions pass.
+- [ ] Copilot cannot reveal encrypted keys/secrets.
+- [ ] Undo works inside 15-day window and fails correctly after expiry.
+
+### 2.3 Security/Performance
+- [ ] No plaintext keys in options/logs/AJAX.
+- [ ] All write paths log old/new values first.
+- [ ] All DB access paths are prepared/sanitized.
+- [ ] Request memory and batch limits are within v6 targets.
+
+---
+
+## 3) Definition of Done for This Todo File
+
+- [ ] Every v6 master prompt requirement has a mapped implementation task in this file.
+- [ ] No remaining high-level requirement exists only in master prompt without a todo item here.
+- [ ] This file is used as the execution backlog until all items are completed.
+
