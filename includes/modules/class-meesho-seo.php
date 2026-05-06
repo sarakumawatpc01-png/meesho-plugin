@@ -288,10 +288,6 @@ class Meesho_Master_SEO {
 		}
 
 		global $wp_filesystem;
-		if ( ! $wp_filesystem ) {
-			return false;
-		}
-
 		$path = ABSPATH . 'llms.txt';
 		return (bool) $wp_filesystem->put_contents( $path, $content, FS_CHMOD_FILE );
 	}
