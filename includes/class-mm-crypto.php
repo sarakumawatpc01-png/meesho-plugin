@@ -14,17 +14,18 @@ if ( ! class_exists( 'MM_Crypto' ) ) {
 				return '';
 			}
 
-			$iv = openssl_random_pseudo_bytes( 16 );
+			$iv = openssl_random_pseudo_bytes( 12 );
 			if ( false === $iv ) {
 				return '';
 			}
 
-			$cipher = openssl_encrypt( (string) $plain_text, 'AES-256-CBC', $this->get_key_material(), 0, $iv );
+			$tag = '';
+			$cipher = openssl_encrypt( (string) $plain_text, 'aes-256-gcm', $this->get_key_material(), OPENSSL_RAW_DATA, $iv, $tag );
 			if ( false === $cipher ) {
 				return '';
 			}
 
-			return base64_encode( $iv . '::' . $cipher );
+			return base64_encode( $iv . $tag . $cipher );
 		}
 
 		public function decrypt( $encoded_text ) {
@@ -37,12 +38,14 @@ if ( ! class_exists( 'MM_Crypto' ) ) {
 				return '';
 			}
 
-			$parts = explode( '::', $decoded, 2 );
-			if ( 2 !== count( $parts ) ) {
+			if ( strlen( $decoded ) < 29 ) {
 				return '';
 			}
 
-			$plain = openssl_decrypt( $parts[1], 'AES-256-CBC', $this->get_key_material(), 0, $parts[0] );
+			$iv     = substr( $decoded, 0, 12 );
+			$tag    = substr( $decoded, 12, 16 );
+			$cipher = substr( $decoded, 28 );
+			$plain  = openssl_decrypt( $cipher, 'aes-256-gcm', $this->get_key_material(), OPENSSL_RAW_DATA, $iv, $tag );
 			return false === $plain ? '' : (string) $plain;
 		}
 	}

@@ -264,9 +264,11 @@ class Meesho_Master_Undo {
 			)
 		);
 
-		$total = ! empty( $params )
-			? $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE $where", $params ) )
-			: $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE $where" );
+		if ( ! empty( $params ) ) {
+			$total = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE $where", $params ) );
+		} else {
+			$total = $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE $where" );
+		}
 
 		wp_send_json_success( array(
 			'logs'  => $logs,

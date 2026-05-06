@@ -284,12 +284,17 @@ class Meesho_Master_SEO {
 			require_once ABSPATH . 'wp-admin/includes/file.php';
 		}
 		if ( ! WP_Filesystem() ) {
+			error_log( 'Meesho Master: WP_Filesystem initialization failed while generating llms.txt' );
 			return false;
 		}
 
 		global $wp_filesystem;
 		$path = ABSPATH . 'llms.txt';
-		return (bool) $wp_filesystem->put_contents( $path, $content, FS_CHMOD_FILE );
+		$written = (bool) $wp_filesystem->put_contents( $path, $content, FS_CHMOD_FILE );
+		if ( ! $written ) {
+			error_log( 'Meesho Master: Failed to write llms.txt via WP_Filesystem' );
+		}
+		return $written;
 	}
 
 	/* ---- Schema injection via wp_head ---- */
