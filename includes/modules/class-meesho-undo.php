@@ -57,6 +57,9 @@ class Meesho_Master_Undo {
 	public function undo( $log_id ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'meesho_audit_logs';
+		if ( ! preg_match( '/^[A-Za-z0-9_]+$/', $table ) ) {
+			wp_send_json_error( 'Invalid request' );
+		}
 
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", $log_id ) );
 		if ( ! $row ) {
@@ -260,12 +263,12 @@ class Meesho_Master_Undo {
 		$logs = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT * FROM $table WHERE $where $order LIMIT %d OFFSET %d",
-				$logs_params
+				...$logs_params
 			)
 		);
 
 		if ( ! empty( $params ) ) {
-			$total = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE $where", $params ) );
+			$total = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE $where", ...$params ) );
 		} else {
 			$total = $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE $where" );
 		}

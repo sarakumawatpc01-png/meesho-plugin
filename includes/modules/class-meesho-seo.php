@@ -154,6 +154,9 @@ class Meesho_Master_SEO {
 	public function apply_suggestion( $suggestion_id ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'meesho_seo_suggestions';
+		if ( ! preg_match( '/^[A-Za-z0-9_]+$/', $table ) ) {
+			wp_send_json_error( 'Invalid request' );
+		}
 		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", $suggestion_id ) );
 		if ( ! $row ) return new WP_Error( 'not_found', 'Suggestion not found' );
 
@@ -360,7 +363,7 @@ class Meesho_Master_SEO {
 		$where = implode( ' AND ', $where_parts );
 		$query = "SELECT * FROM $table WHERE $where ORDER BY STR_TO_DATE(created_at, '%d/%m/%Y') DESC LIMIT %d";
 		$params[] = 50;
-		$rows = $wpdb->get_results( $wpdb->prepare( $query, $params ) );
+		$rows = $wpdb->get_results( $wpdb->prepare( $query, ...$params ) );
 
 		wp_send_json_success( $rows );
 	}
