@@ -220,19 +220,19 @@ class Meesho_Master_Undo {
 		$table = $wpdb->prefix . 'meesho_audit_logs';
 
 		// Filters
-		$where = '1=%d';
-		$params = array( 1 );
+		$where_parts = array();
+		$params = array();
 
 		if ( ! empty( $_POST['action_type'] ) ) {
-			$where .= ' AND action_type = %s';
+			$where_parts[] = 'action_type = %s';
 			$params[] = sanitize_text_field( $_POST['action_type'] );
 		}
 		if ( ! empty( $_POST['source'] ) ) {
-			$where .= ' AND source = %s';
+			$where_parts[] = 'source = %s';
 			$params[] = sanitize_text_field( $_POST['source'] );
 		}
 		if ( ! empty( $_POST['post_id'] ) ) {
-			$where .= ' AND post_id = %d';
+			$where_parts[] = 'post_id = %d';
 			$params[] = intval( $_POST['post_id'] );
 		}
 
@@ -240,13 +240,15 @@ class Meesho_Master_Undo {
 		$order = "ORDER BY STR_TO_DATE(created_at, '%d/%m/%Y') DESC";
 
 		if ( ! empty( $_POST['date_from'] ) ) {
-			$where .= " AND STR_TO_DATE(created_at, '%d/%m/%Y') >= STR_TO_DATE(%s, '%d/%m/%Y')";
+			$where_parts[] = "STR_TO_DATE(created_at, '%d/%m/%Y') >= STR_TO_DATE(%s, '%d/%m/%Y')";
 			$params[] = sanitize_text_field( $_POST['date_from'] );
 		}
 		if ( ! empty( $_POST['date_to'] ) ) {
-			$where .= " AND STR_TO_DATE(created_at, '%d/%m/%Y') <= STR_TO_DATE(%s, '%d/%m/%Y')";
+			$where_parts[] = "STR_TO_DATE(created_at, '%d/%m/%Y') <= STR_TO_DATE(%s, '%d/%m/%Y')";
 			$params[] = sanitize_text_field( $_POST['date_to'] );
 		}
+
+		$where = ! empty( $where_parts ) ? implode( ' AND ', $where_parts ) : '1=1';
 
 		$page   = max( 1, intval( $_POST['page'] ?? 1 ) );
 		$offset = ( $page - 1 ) * 50;
@@ -262,9 +264,9 @@ class Meesho_Master_Undo {
 			)
 		);
 
-		$total = $wpdb->get_var(
-			$wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE $where", $params )
-		);
+		$total = ! empty( $params )
+			? $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE $where", $params ) )
+			: $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE $where" );
 
 		wp_send_json_success( array(
 			'logs'  => $logs,
