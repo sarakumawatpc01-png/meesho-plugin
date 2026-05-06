@@ -145,6 +145,11 @@ $accounts = $settings->get_accounts();
 	<button type="button" class="mm-btn mm-btn-outline" id="btn_generate_llms">📄 Generate llms.txt</button>
 </div>
 
+<div class="mm-card mm-mt-20">
+	<h3>🤖 llms.txt Preview</h3>
+	<pre id="llms_preview" style="max-height:240px; overflow:auto; white-space:pre-wrap; background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px;"><?php echo esc_html( MM_SEO_Geo::get_llms_txt_content() ); ?></pre>
+</div>
+
 <div class="mm-mt-20">
 	<button type="submit" class="mm-btn mm-btn-primary" id="btn_save_settings">💾 Save All Settings</button>
 </div>
@@ -165,16 +170,5 @@ $accounts = $settings->get_accounts();
 		</div>
 	</div>
 	<?php endfor; ?>
-	<button type="button" class="mm-btn mm-btn-outline" onclick="
-		var accs = [];
-		for(var i=0;i<4;i++){
-			accs.push({
-				label: document.querySelectorAll('.meesho-acc-label')[i].value,
-				email: document.querySelectorAll('.meesho-acc-email')[i].value,
-				phone: document.querySelectorAll('.meesho-acc-phone')[i].value,
-				notes: document.querySelectorAll('.meesho-acc-notes')[i].value
-			});
-		}
-		MeeshoMaster.ajax('meesho_save_accounts', {accounts: JSON.stringify(accs)}, function(m){ MeeshoMaster.toast(m,'success'); });
-	">💾 Save Accounts</button>
+	<button type="button" class="mm-btn mm-btn-outline" id="btn_save_accounts">💾 Save Accounts</button>
 </div>

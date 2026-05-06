@@ -1,29 +1,30 @@
 <?php
 
 if ( ! class_exists( 'MM_Logger' ) ) {
-	class MM_Logger {
+class MM_Logger {
+public function log_before_change( $action_type, $target_type, $target_id, $old_value, $new_value, $suggestion_id = 0, $actor = 'manual', $note = '', $undoable = 1 ) {
+global $wpdb;
 
-		public function log_before_change( $action_type, $post_id, $old_value, $new_value, $source = 'system' ) {
-			global $wpdb;
-
-			$table = $wpdb->prefix . 'meesho_audit_logs';
-			$now_ts = current_time( 'timestamp' );
-			$today = wp_date( 'd/m/Y', $now_ts );
-
-			return false !== $wpdb->insert(
-				$table,
-				array(
-					'post_id'     => intval( $post_id ),
-					'action_type' => sanitize_text_field( $action_type ),
-					'old_value'   => is_string( $old_value ) ? $old_value : wp_json_encode( $old_value ),
-					'new_value'   => is_string( $new_value ) ? $new_value : wp_json_encode( $new_value ),
-					'source'      => sanitize_text_field( $source ),
-					'user_id'     => get_current_user_id(),
-					'created_at'  => $today,
-					'expires_at'  => wp_date( 'd/m/Y', strtotime( '+15 days', $now_ts ) ),
-				),
-				array( '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s' )
-			);
-		}
-	}
+$table = MM_DB::table( 'audit_log' );
+return false !== $wpdb->insert(
+$table,
+array(
+'action_type'   => sanitize_text_field( $action_type ),
+'target_type'   => sanitize_text_field( $target_type ),
+'target_id'     => (int) $target_id,
+'suggestion_id' => (int) $suggestion_id,
+'old_value'     => is_string( $old_value ) ? $old_value : wp_json_encode( $old_value ),
+'new_value'     => is_string( $new_value ) ? $new_value : wp_json_encode( $new_value ),
+'actor'         => sanitize_text_field( $actor ),
+'actor_user_id' => get_current_user_id(),
+'note'          => sanitize_textarea_field( $note ),
+'undoable'      => (int) $undoable,
+'undone'        => 0,
+'purge_after'   => gmdate( 'Y-m-d H:i:s', strtotime( '+15 days', current_time( 'timestamp' ) ) ),
+'created_at'    => current_time( 'mysql' ),
+),
+array( '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%d', '%s', '%d', '%d', '%s', '%s' )
+) ? (int) $wpdb->insert_id : false;
+}
+}
 }

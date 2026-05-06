@@ -1,407 +1,279 @@
-/**
- * Meesho Master v6 — Admin JavaScript
- * AJAX handlers, toast notifications, copilot chat, import flow, order management.
- */
-(function($) {
+(function () {
 'use strict';
 
-var MM = window.MeeshoMaster = {};
+const MM = window.MeeshoMaster = window.MeeshoMaster || {};
+let currentCopilotThread = '';
 
-/* ============================================================
-   Toast Notifications
-   ============================================================ */
-MM.toast = function(msg, type) {
-	type = type || 'info';
-	var $container = $('.mm-toast-container');
-	if (!$container.length) {
-		$('body').append('<div class="mm-toast-container"></div>');
-		$container = $('.mm-toast-container');
-	}
-	var $t = $('<div class="mm-toast mm-toast-' + type + '">' + msg + '</div>');
-	$container.append($t);
-	setTimeout(function(){ $t.remove(); }, 4000);
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+const escapeHtml = (value) => {
+const div = document.createElement('div');
+div.textContent = value == null ? '' : String(value);
+return div.innerHTML;
 };
 
-/* ============================================================
-   Clipboard helper
-   ============================================================ */
-MM.copyText = function(text, label) {
-	navigator.clipboard.writeText(text).then(function() {
-		MM.toast((label || 'Text') + ' copied!', 'success');
-	});
+MM.toast = function (msg, type = 'info') {
+let container = $('.mm-toast-container');
+if (!container) {
+container = document.createElement('div');
+container.className = 'mm-toast-container';
+document.body.appendChild(container);
+}
+const toast = document.createElement('div');
+toast.className = 'mm-toast mm-toast-' + type;
+toast.textContent = msg;
+container.appendChild(toast);
+setTimeout(() => toast.remove(), 4000);
 };
 
-/* ============================================================
-   Confirmation Modal
-   ============================================================ */
-MM.confirm = function(title, message, onConfirm) {
-	var html = '<div class="mm-modal-overlay active" id="mm-confirm-modal">'
-		+ '<div class="mm-modal"><h3>' + title + '</h3><p>' + message
-		+ '</p><p class="mm-text-muted">This can be undone within 15 days.</p>'
-		+ '<div class="mm-modal-actions">'
-		+ '<button class="mm-btn mm-btn-outline" id="mm-modal-cancel">Cancel</button>'
-		+ '<button class="mm-btn mm-btn-danger" id="mm-modal-confirm">Confirm</button>'
-		+ '</div></div></div>';
-	$('body').append(html);
-	$('#mm-modal-cancel').on('click', function(){ $('#mm-confirm-modal').remove(); });
-	$('#mm-modal-confirm').on('click', function(){ $('#mm-confirm-modal').remove(); onConfirm(); });
+MM.copyText = function (text, label) {
+navigator.clipboard.writeText(text || '').then(() => MM.toast((label || 'Text') + ' copied!', 'success'));
 };
 
-/* ============================================================
-   Skeleton Loader helpers
-   ============================================================ */
-MM.showSkeleton = function(sel, rows) {
-	rows = rows || 3;
-	var html = '';
-	for (var i = 0; i < rows; i++) {
-		html += '<div class="mm-skeleton-row"><div class="mm-skeleton"></div><div class="mm-skeleton"></div><div class="mm-skeleton"></div></div>';
-	}
-	$(sel).html(html);
+MM.confirm = function (title, message, onConfirm) {
+const overlay = document.createElement('div');
+overlay.className = 'mm-modal-overlay active';
+overlay.innerHTML = '<div class="mm-modal"><h3>' + escapeHtml(title) + '</h3><p>' + escapeHtml(message) + '</p><p class="mm-text-muted">This can be undone within 15 days.</p><div class="mm-modal-actions"><button class="mm-btn mm-btn-outline" data-mm-cancel>Cancel</button><button class="mm-btn mm-btn-danger" data-mm-confirm>Confirm</button></div></div>';
+document.body.appendChild(overlay);
+$('[data-mm-cancel]', overlay).addEventListener('click', () => overlay.remove());
+$('[data-mm-confirm]', overlay).addEventListener('click', () => {
+overlay.remove();
+onConfirm();
+});
 };
 
-/* ============================================================
-   Generic AJAX helper
-   ============================================================ */
-MM.ajax = function(action, data, onSuccess, onError) {
-	data = data || {};
-	data.action = action;
-	data.nonce = meesho_ajax.nonce;
-	$.post(meesho_ajax.ajax_url, data, function(resp) {
-		if (resp.success) {
-			if (onSuccess) onSuccess(resp.data);
-		} else {
-			var msg = typeof resp.data === 'object' ? (resp.data.message || JSON.stringify(resp.data)) : resp.data;
-			MM.toast(msg, 'error');
-			if (onError) onError(resp.data);
-		}
-	}).fail(function() {
-		MM.toast('Request failed. Please try again.', 'error');
-	});
+MM.showSkeleton = function (selector, rows = 3) {
+const target = $(selector);
+if (!target) return;
+target.innerHTML = Array.from({ length: rows }).map(() => '<div class="mm-skeleton-row"><div class="mm-skeleton"></div><div class="mm-skeleton"></div><div class="mm-skeleton"></div></div>').join('');
 };
 
-/* ============================================================
-   IMPORT TAB
-   ============================================================ */
-$(document).on('click', '#btn_import_url', function() {
-	var url = $('#meesho_url').val().trim();
-	if (!url) { MM.toast('Please enter a Meesho URL', 'error'); return; }
-	$(this).prop('disabled', true).text('Importing...');
-	MM.ajax('meesho_import_url', { url: url }, function(data) {
-		$('#btn_import_url').prop('disabled', false).text('🚀 Import via URL');
-		if (data.status === 'duplicate') {
-			$('#import_results').html(
-				'<div class="mm-card"><h3>⚠️ Duplicate Found</h3><p>' + data.message + '</p>'
-				+ '<button class="mm-btn mm-btn-primary mm-btn-sm" onclick="MeeshoMaster.toast(\'Overwrite not yet wired\',\'info\')">Overwrite</button> '
-				+ '<button class="mm-btn mm-btn-outline mm-btn-sm" onclick="$(\'#import_results\').html(\'\')">Skip</button></div>'
-			);
-		} else if (data.status === 'sku_missing') {
-			$('#manual_sku_section').removeClass('mm-hidden');
-			MM.toast('SKU could not be extracted. Please enter it manually.', 'error');
-		} else {
-			MM.toast(data.message, 'success');
-			$('#import_results').html('<div class="mm-card"><p>✅ ' + data.message + '</p></div>');
-		}
-	}, function(err) {
-		$('#btn_import_url').prop('disabled', false).text('🚀 Import via URL');
-		if (err && err.fallback) {
-			$('#import_results').html('<div class="mm-card" style="border-left:3px solid var(--mm-warning); padding:12px"><strong>⚠️ Scrapling unavailable.</strong> Please use the HTML paste method on the right.</div>');
-		}
-	});
+MM.ajax = async function (action, data = {}, onSuccess, onError) {
+try {
+let payload;
+if (typeof data === 'string') {
+payload = new URLSearchParams(data);
+} else {
+payload = new URLSearchParams();
+Object.entries(data).forEach(([key, value]) => payload.append(key, value == null ? '' : value));
+}
+payload.set('action', action);
+payload.set('nonce', meesho_ajax.nonce);
+const response = await fetch(meesho_ajax.ajax_url, {
+method: 'POST',
+headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+body: payload.toString(),
+credentials: 'same-origin'
+});
+const json = await response.json();
+if (!json.success) {
+const message = typeof json.data === 'object' && json.data ? (json.data.message || JSON.stringify(json.data)) : (json.data || 'Request failed');
+MM.toast(message, 'error');
+if (onError) onError(json.data);
+throw new Error(message);
+}
+if (onSuccess) onSuccess(json.data);
+return json.data;
+} catch (error) {
+if (!onError) {
+MM.toast(error.message || 'Request failed. Please try again.', 'error');
+}
+throw error;
+}
+};
+
+MM.loadOrders = function (page = 1) {
+MM.showSkeleton('#orders_table_body');
+MM.ajax('meesho_get_orders', { page, status: $('#order_status_filter')?.value || '', search: $('#order_search')?.value || '' }, (data) => {
+MM._currentOrders = data.orders || [];
+const html = !MM._currentOrders.length ? '<tr><td colspan="8" style="text-align:center;">No orders found.</td></tr>' : MM._currentOrders.map((o) => {
+const slaClass = o.sla_status === 'breached' ? 'mm-sla-breached' : '';
+const codClass = o.cod_risk === 'high' ? 'mm-cod-high' : '';
+const badge = o.fulfillment_status === 'delivered' ? 'success' : (['cancelled', 'returned'].includes(o.fulfillment_status) || o.sla_status === 'breached' ? 'danger' : (o.fulfillment_status === 'dispatched' ? 'purple' : 'info'));
+const itemsHtml = (o.items || []).map((item) => '<strong>' + escapeHtml(item.name) + '</strong><br><small>SKU: ' + escapeHtml(item.sku || '-') + ' | Size: ' + escapeHtml(item.size || '-') + ' | Qty: ' + escapeHtml(item.qty) + '</small>').join('<br>') || '-';
+const address = o.address || '';
+const customerHtml = '<strong>' + escapeHtml(o.customer_name || '-') + '</strong> <button class="mm-btn-icon mm-btn-sm" data-copy="' + escapeHtml(o.customer_name || '') + '" data-label="Name">📋</button><br><small>📱 ' + escapeHtml(o.phone || '-') + ' <button class="mm-btn-icon mm-btn-sm" data-copy="' + escapeHtml(o.phone || '') + '" data-label="Phone">📋</button></small><br><small>📍 ' + escapeHtml(address.substring(0, 40)) + (address.length > 40 ? '...' : '') + ' <button class="mm-btn-icon mm-btn-sm" data-copy="' + escapeHtml(address.replace(/\n/g, ' ')) + '" data-label="Address">📋</button></small>';
+let meeshoSku = '';
+(o.items || []).forEach((item) => { if (item.sku && !meeshoSku) meeshoSku = item.sku.split('-')[0]; });
+let actions = '<button class="mm-btn mm-btn-sm mm-btn-outline" data-order-edit="' + o.id + '">✏️ Edit</button>';
+if (o.fulfillment_status === 'pending' && meeshoSku) actions += ' <a href="https://www.meesho.com/p/' + encodeURIComponent(meeshoSku) + '" target="_blank" class="mm-btn mm-btn-sm mm-btn-primary">🛒 Order on Meesho</a>';
+return '<tr class="' + slaClass + ' ' + codClass + '"><td>#' + escapeHtml(o.wc_order_id) + '<br><small>' + escapeHtml(o.created_at || '') + '</small></td><td>' + itemsHtml + '</td><td>' + customerHtml + '</td><td>' + escapeHtml(o.payment_method || '-') + (o.cod_risk === 'high' ? '<br><span class="mm-badge mm-badge-danger">⚠ RISK</span>' : '') + '<br><small>₹' + escapeHtml(o.order_total || '0') + '</small></td><td><span class="mm-badge mm-badge-' + badge + '">' + escapeHtml((o.fulfillment_status || '').replace(/_/g, ' ')) + '</span>' + (o.meesho_order_id ? '<br><small>M: ' + escapeHtml(o.meesho_order_id) + '</small>' : '') + (o.tracking_id ? '<br><small>T: ' + escapeHtml(o.tracking_id) + '</small>' : '') + '</td><td><small>' + escapeHtml(o.account_used || '-') + '</small></td><td>' + (o.sla_status === 'breached' ? '<span class="mm-badge mm-badge-danger">⏰ BREACHED</span>' : '<span class="mm-badge mm-badge-success">OK</span>') + '</td><td>' + actions + '</td></tr>';
+}).join('');
+$('#orders_table_body').innerHTML = html;
+});
+};
+
+MM.openOrderEdit = function (id) {
+const order = (MM._currentOrders || []).find((item) => Number(item.id) === Number(id));
+if (!order) return MM.toast('Order data not found', 'error');
+$('#oe-order-id').textContent = order.wc_order_id;
+$('#oe-status').value = order.fulfillment_status;
+$('#oe-meesho-id').value = order.meesho_order_id || '';
+$('#oe-tracking').value = order.tracking_id || '';
+$('#oe-notes').value = '';
+$('#order-edit-modal').dataset.orderId = id;
+MM.ajax('meesho_get_accounts', {}, (accounts) => {
+$('#oe-account').innerHTML = '<option value="">Select account...</option>' + (accounts || []).map((account) => '<option value="' + escapeHtml(account.label) + '" ' + (order.account_used === account.label ? 'selected' : '') + '>' + escapeHtml(account.label) + ' (***' + escapeHtml(account.phone) + ')</option>').join('');
+});
+$('#order-edit-modal').classList.add('active');
+};
+
+MM.submitOrderEdit = function () {
+MM.ajax('meesho_update_order', {
+order_id: $('#order-edit-modal').dataset.orderId,
+fulfillment_status: $('#oe-status').value,
+meesho_order_id: $('#oe-meesho-id').value,
+tracking_id: $('#oe-tracking').value,
+account_used: $('#oe-account').value,
+notes: $('#oe-notes').value
+}, (msg) => {
+MM.toast(msg, 'success');
+$('#order-edit-modal').classList.remove('active');
+MM.loadOrders();
+});
+};
+
+MM.loadSuggestions = function () {
+MM.showSkeleton('#seo_suggestions_body');
+MM.ajax('meesho_get_suggestions', { priority: $('#seo_priority_filter')?.value || '', type: $('#seo_type_filter')?.value || '' }, (rows) => {
+$('#seo_suggestions_body').innerHTML = !rows.length ? '<tr><td colspan="6" style="text-align:center;">No pending suggestions.</td></tr>' : rows.map((row) => '<tr><td>' + escapeHtml(row.post_id) + '</td><td><span class="mm-badge mm-badge-purple">' + escapeHtml(row.type) + '</span></td><td><small><strong>Current:</strong> ' + escapeHtml((row.current_value || '').substring(0, 50) || 'empty') + '<br><strong>→</strong> ' + escapeHtml((row.suggested_value || '').substring(0, 80)) + '</small></td><td>' + escapeHtml(row.confidence) + '%</td><td><span class="mm-badge mm-badge-' + (row.priority === 'high' ? 'danger' : (row.priority === 'medium' ? 'warning' : 'info')) + '">' + escapeHtml(row.priority) + '</span></td><td><button class="mm-btn mm-btn-sm mm-btn-success" data-apply-suggestion="' + row.id + '">✅ Apply</button> <button class="mm-btn mm-btn-sm mm-btn-outline" data-reject-suggestion="' + row.id + '">❌ Reject</button></td></tr>').join('');
+});
+};
+
+MM.applySuggestion = (id) => MM.ajax('meesho_apply_suggestion', { suggestion_id: id }, () => { MM.toast('Applied', 'success'); MM.loadSuggestions(); });
+MM.rejectSuggestion = (id) => MM.ajax('meesho_reject_suggestion', { suggestion_id: id }, () => { MM.toast('Rejected', 'info'); MM.loadSuggestions(); });
+MM.applyAllSafe = () => MM.confirm('Apply All Safe Fixes', 'This will auto-apply all safe high-priority suggestions.', () => MM.ajax('meesho_apply_all_safe', {}, (msg) => { MM.toast(msg, 'success'); MM.loadSuggestions(); }));
+MM.loadLogs = function (page = 1) {
+MM.showSkeleton('#logs_table_body');
+MM.ajax('meesho_get_logs', { page, action_type: $('#log_type_filter')?.value || '', source: $('#log_source_filter')?.value || '' }, (data) => {
+$('#logs_table_body').innerHTML = !(data.logs || []).length ? '<tr><td colspan="6" style="text-align:center;">No logs found.</td></tr>' : data.logs.map((log) => '<tr><td>' + escapeHtml(log.created_at) + '</td><td>' + escapeHtml(log.action_type) + '</td><td>' + escapeHtml(log.post_id || '-') + '</td><td><span class="mm-badge mm-badge-purple">' + escapeHtml(log.source) + '</span></td><td><small>' + escapeHtml((log.old_value || '').substring(0, 50) || '-') + '</small></td><td>' + (log.undoable && !log.undone && log.old_value !== null ? '<button class="mm-btn mm-btn-sm mm-btn-outline" data-undo-log="' + log.id + '">↩️ Undo</button>' : '<span class="mm-text-muted">Expired</span>') + '</td></tr>').join('');
+});
+};
+MM.undoAction = (id) => MM.confirm('Undo Action', 'Restore the previous value?', () => MM.ajax('meesho_undo_action', { log_id: id }, (msg) => { MM.toast(msg, 'success'); MM.loadLogs(); }));
+
+MM.appendCopilotMessage = function (role, html) {
+const history = $('#copilot_chat_history');
+if (!history) return;
+const wrapper = document.createElement('div');
+wrapper.className = 'mm-chat-msg ' + (role === 'user' ? 'mm-chat-msg-user' : 'mm-chat-msg-bot');
+wrapper.innerHTML = html;
+history.appendChild(wrapper);
+history.scrollTop = history.scrollHeight;
+};
+
+MM.sendCopilotMessage = function () {
+const input = $('#copilot_input');
+if (!input || !input.value.trim()) return;
+const msg = input.value.trim();
+MM.appendCopilotMessage('user', escapeHtml(msg));
+input.value = '';
+MM.appendCopilotMessage('bot', '<div id="copilot-typing"><div class="mm-skeleton" style="width:200px;height:14px;"></div></div>');
+MM.ajax('meesho_copilot_chat', { message: msg, model: $('#copilot_model_select')?.value || '', thread_key: currentCopilotThread }, (data) => {
+currentCopilotThread = data.thread_key || currentCopilotThread;
+$('#copilot-typing')?.parentElement?.remove();
+const actions = (data.actions || []).map((action) => '<button class="mm-btn mm-btn-sm mm-btn-outline mm-mt-10" data-copilot-action="' + escapeHtml(JSON.stringify(action).replace(/"/g, '&quot;')) + '">Apply: ' + escapeHtml(action.action || 'Action') + '</button>').join('');
+MM.appendCopilotMessage('bot', escapeHtml(data.reply).replace(/\n/g, '<br>') + actions);
+if ((data.auto_applied || []).length) MM.toast(data.auto_applied.length + ' actions auto-applied', 'success');
+}, () => $('#copilot-typing')?.parentElement?.remove());
+};
+
+MM.loadCopilotHistory = function () {
+MM.ajax('meesho_copilot_history', { thread_key: currentCopilotThread }, (data) => {
+if (!Array.isArray(data) || !$('#copilot_chat_history')) return;
+$('#copilot_chat_history').innerHTML = '';
+data.forEach((item) => MM.appendCopilotMessage(item.role === 'user' ? 'user' : 'bot', escapeHtml(item.content || '').replace(/\n/g, '<br>')));
+});
+};
+MM.undoLastCopilot = () => MM.ajax('meesho_copilot_undo_last', {}, (msg) => MM.toast(msg, 'success'));
+
+MM.saveSettings = function () {
+const form = $('#meesho_settings_form');
+if (!form) return;
+const payload = new URLSearchParams(new FormData(form)).toString();
+MM.ajax('meesho_save_settings', payload, (msg) => MM.toast(msg, 'success'));
+};
+MM.saveAccounts = function () {
+const accounts = $$('.meesho-acc-label').map((field, index) => ({
+label: field.value,
+email: $$('.meesho-acc-email')[index].value,
+phone: $$('.meesho-acc-phone')[index].value,
+notes: $$('.meesho-acc-notes')[index].value
+}));
+MM.ajax('meesho_save_accounts', { accounts: JSON.stringify(accounts) }, (msg) => MM.toast(msg, 'success'));
+};
+MM.generateHeatmapInsights = () => MM.ajax('meesho_get_heatmap_insights', {}, (data) => {
+const target = $('#heatmap_insights');
+if (!target) return;
+target.innerHTML = !(data.insights || []).length ? '<p>No insights available.</p>' : data.insights.map((insight, index) => '<div class="mm-card mm-mb-10"><div class="mm-flex-between"><span>' + escapeHtml(insight.suggestion || '') + '</span><span class="mm-badge mm-badge-' + ((insight.priority === 'high') ? 'danger' : (insight.priority === 'medium' ? 'warning' : 'info')) + '">' + escapeHtml(insight.priority || 'low') + '</span></div><div class="mm-mt-10"><button class="mm-btn mm-btn-sm mm-btn-primary" data-dismiss-heatmap="' + index + '">Dismiss</button></div></div>').join('');
+});
+MM.addKeyword = () => MM.ajax('meesho_add_keyword', { keyword: $('#new_keyword')?.value || '' }, (data) => { MM.toast('Keyword tracked: ' + data.keyword, 'success'); MM.loadRankings(); });
+MM.loadRankings = () => MM.ajax('meesho_get_rankings', {}, (rows) => {
+const target = $('#rankings_list');
+if (!target) return;
+target.innerHTML = !(rows || []).length ? '<p class="mm-text-muted">Tracked keywords will appear here.</p>' : '<table class="mm-table"><thead><tr><th>Keyword</th><th>Page</th><th>Position</th><th>Impressions</th><th>CTR</th><th>Date</th></tr></thead><tbody>' + rows.map((row) => '<tr><td>' + escapeHtml(row.keyword) + '</td><td><small>' + escapeHtml(row.page_url || '') + '</small></td><td>' + escapeHtml(row.position) + '</td><td>' + escapeHtml(row.impressions) + '</td><td>' + escapeHtml(row.ctr) + '</td><td>' + escapeHtml(row.recorded_at) + '</td></tr>').join('') + '</tbody></table>';
 });
 
-$(document).on('click', '#btn_import_html', function() {
-	var html = $('#meesho_html').val().trim();
-	if (!html) { MM.toast('Please paste HTML source', 'error'); return; }
-	$(this).prop('disabled', true).text('Parsing...');
-	MM.ajax('meesho_import_html', { html: html, product_url: $('#meesho_url').val() || '' }, function(data) {
-		$('#btn_import_html').prop('disabled', false).text('📋 Parse HTML');
-		if (data.status === 'duplicate') {
-			$('#import_results').html('<div class="mm-card"><h3>⚠️ Duplicate: ' + data.message + '</h3></div>');
-		} else if (data.status === 'sku_missing') {
-			$('#manual_sku_section').removeClass('mm-hidden');
-			MM.toast('SKU could not be extracted. Please enter it manually.', 'error');
-		} else {
-			MM.toast(data.message, 'success');
-			$('#import_results').html('<div class="mm-card"><p>✅ ' + data.message + '</p></div>');
-		}
-	}, function() {
-		$('#btn_import_html').prop('disabled', false).text('📋 Parse HTML');
-	});
+document.addEventListener('click', (event) => {
+const copy = event.target.closest('[data-copy]');
+if (copy) return MM.copyText(copy.getAttribute('data-copy'), copy.getAttribute('data-label'));
+const orderEdit = event.target.closest('[data-order-edit]');
+if (orderEdit) return MM.openOrderEdit(orderEdit.getAttribute('data-order-edit'));
+const applySuggestion = event.target.closest('[data-apply-suggestion]');
+if (applySuggestion) return MM.applySuggestion(applySuggestion.getAttribute('data-apply-suggestion'));
+const rejectSuggestion = event.target.closest('[data-reject-suggestion]');
+if (rejectSuggestion) return MM.rejectSuggestion(rejectSuggestion.getAttribute('data-reject-suggestion'));
+const undoLog = event.target.closest('[data-undo-log]');
+if (undoLog) return MM.undoAction(undoLog.getAttribute('data-undo-log'));
+const copilotAction = event.target.closest('[data-copilot-action]');
+if (copilotAction) return MM.ajax('meesho_copilot_apply', { action_data: copilotAction.getAttribute('data-copilot-action').replace(/&quot;/g, '"') }, (msg) => MM.toast(msg, 'success'));
 });
 
-$(document).on('click', '#btn_manual_sku', function() {
-	var sku = $('#manual_sku_input').val().trim();
-	if (!sku || !/^\d+$/.test(sku)) { MM.toast('Enter a valid numeric SKU', 'error'); return; }
-	MM.ajax('meesho_manual_sku', { sku: sku, product_data: '{}' }, function(data) {
-		MM.toast(data.message || 'Imported', 'success');
-		$('#manual_sku_section').addClass('mm-hidden');
-	});
+document.addEventListener('DOMContentLoaded', () => {
+$('#btn_import_url')?.addEventListener('click', async () => {
+const button = $('#btn_import_url');
+const url = $('#meesho_url')?.value.trim();
+if (!url) return MM.toast('Please enter a Meesho URL', 'error');
+button.disabled = true; button.textContent = 'Importing...';
+await MM.ajax('meesho_import_url', { url }, (data) => {
+button.disabled = false; button.textContent = '🚀 Import via URL';
+if (data.status === 'duplicate') {
+$('#import_results').innerHTML = '<div class="mm-card"><h3>⚠️ Duplicate Found</h3><p>' + escapeHtml(data.message) + '</p></div>';
+} else if (data.status === 'sku_missing') {
+$('#manual_sku_section')?.classList.remove('mm-hidden');
+MM.toast('SKU could not be extracted. Please enter it manually.', 'error');
+} else {
+MM.toast(data.message, 'success');
+$('#import_results').innerHTML = '<div class="mm-card"><p>✅ ' + escapeHtml(data.message) + '</p></div>';
+}
+}, () => { button.disabled = false; button.textContent = '🚀 Import via URL'; });
 });
-
-/* ============================================================
-   ORDERS TAB — enhanced with search, address copy, Order on Meesho
-   ============================================================ */
-MM._currentOrders = []; // cache for edit modal
-
-MM.loadOrders = function(page) {
-	page = page || 1;
-	MM.showSkeleton('#orders_table_body');
-	MM.ajax('meesho_get_orders', {
-		page: page,
-		status: $('#order_status_filter').val() || '',
-		search: $('#order_search').val() || ''
-	}, function(data) {
-		MM._currentOrders = data.orders || [];
-		var html = '';
-		if (!data.orders || data.orders.length === 0) {
-			html = '<tr><td colspan="8" style="text-align:center;">No orders found.</td></tr>';
-		} else {
-			data.orders.forEach(function(o) {
-				var sla_class = o.sla_status === 'breached' ? 'mm-sla-breached' : '';
-				var cod_class = o.cod_risk === 'high' ? 'mm-cod-high' : '';
-
-				// Status badge color
-				var sc = 'info';
-				if (o.fulfillment_status === 'delivered') sc = 'success';
-				else if (o.fulfillment_status === 'cancelled' || o.fulfillment_status === 'returned') sc = 'danger';
-				else if (o.sla_status === 'breached') sc = 'danger';
-				else if (o.fulfillment_status === 'dispatched') sc = 'purple';
-
-				// Product info with SKU and sizes
-				var items_html = '-';
-				var meesho_sku = '';
-				if (o.items && o.items.length) {
-					items_html = o.items.map(function(i){
-						if (i.sku) meesho_sku = i.sku.split('-')[0]; // parent SKU
-						return '<strong>' + i.name + '</strong><br><small>SKU: ' + (i.sku||'-') + ' | Size: ' + (i.size||'-') + ' | Qty: ' + i.qty + '</small>';
-					}).join('<br>');
-				}
-
-				// Customer with clipboard buttons for name, phone, address
-				var addr = o.address || '';
-				var cust_html = '<strong>' + (o.customer_name||'-') + '</strong>'
-					+ ' <button class="mm-btn-icon mm-btn-sm" title="Copy name" onclick="MeeshoMaster.copyText(\'' + (o.customer_name||'').replace(/'/g,"\\'") + '\',\'Name\')">📋</button>'
-					+ '<br><small>📱 ' + (o.phone||'-')
-					+ ' <button class="mm-btn-icon mm-btn-sm" title="Copy phone" onclick="MeeshoMaster.copyText(\'' + (o.phone||'') + '\',\'Phone\')">📋</button></small>'
-					+ '<br><small>📍 ' + addr.substring(0,40) + (addr.length > 40 ? '...' : '')
-					+ ' <button class="mm-btn-icon mm-btn-sm" title="Copy address" onclick="MeeshoMaster.copyText(\'' + addr.replace(/'/g,"\\'").replace(/\n/g,' ') + '\',\'Address\')">📋</button></small>';
-
-				// SLA badge
-				var sla_html = o.sla_status === 'breached'
-					? '<span class="mm-badge mm-badge-danger">⏰ BREACHED</span>'
-					: '<span class="mm-badge mm-badge-success">OK</span>';
-
-				// Actions column
-				var actions_html = '<button class="mm-btn mm-btn-sm mm-btn-outline" onclick="MeeshoMaster.openOrderEdit(' + o.id + ')">✏️ Edit</button>';
-				// "Order on Meesho" button — only for pending
-				if (o.fulfillment_status === 'pending' && meesho_sku) {
-					actions_html += ' <a href="https://www.meesho.com/p/' + meesho_sku + '" target="_blank" class="mm-btn mm-btn-sm mm-btn-primary">🛒 Order on Meesho</a>';
-				}
-
-				html += '<tr class="' + sla_class + ' ' + cod_class + '">'
-					+ '<td>#' + o.wc_order_id + '<br><small>' + (o.created_at||'') + '</small></td>'
-					+ '<td>' + items_html + '</td>'
-					+ '<td>' + cust_html + '</td>'
-					+ '<td>' + (o.payment_method || '-')
-					  + (o.cod_risk === 'high' ? '<br><span class="mm-badge mm-badge-danger">⚠ RISK</span>' : '')
-					  + '<br><small>₹' + (o.order_total || '0') + '</small></td>'
-					+ '<td><span class="mm-badge mm-badge-' + sc + '">' + o.fulfillment_status.replace(/_/g,' ') + '</span>'
-					  + (o.meesho_order_id ? '<br><small>M: ' + o.meesho_order_id + '</small>' : '')
-					  + (o.tracking_id ? '<br><small>T: ' + o.tracking_id + '</small>' : '') + '</td>'
-					+ '<td><small>' + (o.account_used || '-') + '</small></td>'
-					+ '<td>' + sla_html + '</td>'
-					+ '<td>' + actions_html + '</td>'
-					+ '</tr>';
-			});
-		}
-		$('#orders_table_body').html(html);
-	});
-};
-
-/* Order Edit Modal */
-MM.openOrderEdit = function(id) {
-	var o = MM._currentOrders.find(function(x){ return x.id == id; });
-	if (!o) { MM.toast('Order data not found', 'error'); return; }
-
-	$('#oe-order-id').text(o.wc_order_id);
-	$('#oe-status').val(o.fulfillment_status);
-	$('#oe-meesho-id').val(o.meesho_order_id || '');
-	$('#oe-tracking').val(o.tracking_id || '');
-	$('#oe-notes').val('');
-	$('#order-edit-modal').data('order-id', id);
-
-	// Load accounts into dropdown
-	MM.ajax('meesho_get_accounts', {}, function(accs) {
-		var opts = '<option value="">Select account...</option>';
-		(accs || []).forEach(function(a, i) {
-			var sel = (o.account_used === a.label) ? 'selected' : '';
-			opts += '<option value="' + a.label + '" ' + sel + '>' + a.label + ' (***' + a.phone + ')</option>';
-		});
-		$('#oe-account').html(opts);
-	});
-
-	$('#order-edit-modal').addClass('active');
-};
-
-MM.submitOrderEdit = function() {
-	var id = $('#order-edit-modal').data('order-id');
-	MM.ajax('meesho_update_order', {
-		order_id: id,
-		fulfillment_status: $('#oe-status').val(),
-		meesho_order_id: $('#oe-meesho-id').val(),
-		tracking_id: $('#oe-tracking').val(),
-		account_used: $('#oe-account').val(),
-		notes: $('#oe-notes').val()
-	}, function(msg) {
-		MM.toast(msg, 'success');
-		$('#order-edit-modal').removeClass('active');
-		MM.loadOrders();
-	});
-};
-
-/* ============================================================
-   SEO TAB — with type filter
-   ============================================================ */
-MM.loadSuggestions = function() {
-	MM.showSkeleton('#seo_suggestions_body');
-	MM.ajax('meesho_get_suggestions', {
-		priority: $('#seo_priority_filter').val() || '',
-		type: $('#seo_type_filter').val() || ''
-	}, function(data) {
-		var html = '';
-		if (!data || data.length === 0) {
-			html = '<tr><td colspan="6" style="text-align:center;">No pending suggestions.</td></tr>';
-		} else {
-			data.forEach(function(s) {
-				var pb = '<span class="mm-badge mm-badge-' +
-					(s.priority === 'high' ? 'danger' : s.priority === 'medium' ? 'warning' : 'info') +
-					'">' + s.priority + '</span>';
-				html += '<tr>'
-					+ '<td>' + s.post_id + '</td>'
-					+ '<td><span class="mm-badge mm-badge-purple">' + s.type + '</span></td>'
-					+ '<td><small><strong>Current:</strong> ' + ((s.current_value || '').substring(0, 50) || '<em>empty</em>')
-					  + '<br><strong>→</strong> ' + ((s.suggested_value || '').substring(0, 80)) + '</small></td>'
-					+ '<td>' + s.confidence + '%</td>'
-					+ '<td>' + pb + '</td>'
-					+ '<td>'
-					+ '<button class="mm-btn mm-btn-sm mm-btn-success" onclick="MeeshoMaster.applySuggestion(' + s.id + ')">✅ Apply</button> '
-					+ '<button class="mm-btn mm-btn-sm mm-btn-outline" onclick="MeeshoMaster.rejectSuggestion(' + s.id + ')">❌ Reject</button>'
-					+ '</td></tr>';
-			});
-		}
-		$('#seo_suggestions_body').html(html);
-	});
-};
-
-MM.applySuggestion = function(id) {
-	MM.ajax('meesho_apply_suggestion', { suggestion_id: id }, function(msg) {
-		MM.toast(msg, 'success');
-		MM.loadSuggestions();
-	});
-};
-
-MM.rejectSuggestion = function(id) {
-	MM.ajax('meesho_reject_suggestion', { suggestion_id: id }, function() {
-		MM.toast('Rejected', 'info');
-		MM.loadSuggestions();
-	});
-};
-
-MM.applyAllSafe = function() {
-	MM.confirm('Apply All Safe Fixes', 'This will auto-apply all high-priority suggestions with confidence ≥ 85%.', function() {
-		MM.ajax('meesho_apply_all_safe', {}, function(msg) { MM.toast(msg, 'success'); MM.loadSuggestions(); });
-	});
-};
-
-/* ============================================================
-   COPILOT TAB
-   ============================================================ */
-$(document).on('click', '#btn_copilot_send', function() {
-	var msg = $('#copilot_input').val().trim();
-	if (!msg) return;
-	$('#copilot_chat_history').append('<div class="mm-chat-msg mm-chat-msg-user">' + $('<span>').text(msg).html() + '</div>');
-	$('#copilot_input').val('');
-	$('#copilot_chat_history').append('<div class="mm-chat-msg mm-chat-msg-bot" id="copilot-typing"><div class="mm-skeleton" style="width:200px;height:14px;"></div></div>');
-	$('#copilot_chat_history').scrollTop($('#copilot_chat_history')[0].scrollHeight);
-
-	MM.ajax('meesho_copilot_chat', { message: msg, model: $('#copilot_model_select').val() || '' }, function(data) {
-		$('#copilot-typing').remove();
-		$('#copilot_chat_history').append('<div class="mm-chat-msg mm-chat-msg-bot">' + data.reply.replace(/\n/g, '<br>') + '</div>');
-		$('#copilot_chat_history').scrollTop($('#copilot_chat_history')[0].scrollHeight);
-		if (data.auto_applied && data.auto_applied.length) {
-			MM.toast(data.auto_applied.length + ' actions auto-applied', 'success');
-		}
-	}, function() {
-		$('#copilot-typing').remove();
-	});
+$('#btn_import_html')?.addEventListener('click', async () => {
+const button = $('#btn_import_html');
+const html = $('#meesho_html')?.value.trim();
+if (!html) return MM.toast('Please paste HTML source', 'error');
+button.disabled = true; button.textContent = 'Parsing...';
+await MM.ajax('meesho_import_html', { html, product_url: $('#meesho_url')?.value || '' }, (data) => {
+button.disabled = false; button.textContent = '📋 Parse HTML';
+if (data.status === 'sku_missing') $('#manual_sku_section')?.classList.remove('mm-hidden');
+$('#import_results').innerHTML = '<div class="mm-card"><p>✅ ' + escapeHtml(data.message || 'Done') + '</p></div>';
+}, () => { button.disabled = false; button.textContent = '📋 Parse HTML'; });
 });
-
-$(document).on('keypress', '#copilot_input', function(e) {
-	if (e.which === 13) { e.preventDefault(); $('#btn_copilot_send').click(); }
+$('#btn_manual_sku')?.addEventListener('click', () => MM.ajax('meesho_manual_sku', { sku: $('#manual_sku_input')?.value || '', product_data: '{}' }, (data) => { MM.toast(data.message || 'Imported', 'success'); $('#manual_sku_section')?.classList.add('mm-hidden'); }));
+$('#btn_copilot_send')?.addEventListener('click', MM.sendCopilotMessage);
+$('#copilot_input')?.addEventListener('keypress', (event) => { if (event.key === 'Enter') { event.preventDefault(); MM.sendCopilotMessage(); } });
+$('#btn_copilot_undo')?.addEventListener('click', MM.undoLastCopilot);
+$('#btn_save_settings')?.addEventListener('click', (event) => { event.preventDefault(); MM.saveSettings(); });
+$('#btn_test_email')?.addEventListener('click', () => MM.ajax('meesho_test_email', {}, (msg) => MM.toast(msg, 'success')));
+$('#btn_generate_llms')?.addEventListener('click', () => MM.ajax('meesho_generate_llms_txt', {}, (data) => { MM.toast(data.message || 'llms.txt generated', 'success'); const pre = $('#llms_preview'); if (pre && data.content) pre.textContent = data.content; }));
+$('#btn_save_accounts')?.addEventListener('click', MM.saveAccounts);
+$('#btn_generate_heatmap')?.addEventListener('click', MM.generateHeatmapInsights);
+$('#btn_add_keyword')?.addEventListener('click', MM.addKeyword);
+$('#btn_send_report')?.addEventListener('click', () => MM.ajax('meesho_send_report', {}, (msg) => MM.toast(msg, 'success')));
+const params = new URLSearchParams(window.location.search);
+const tab = params.get('tab') || 'import';
+if (tab === 'orders') MM.loadOrders();
+if (tab === 'seo') MM.loadSuggestions();
+if (tab === 'logs') MM.loadLogs();
+if (tab === 'analytics') MM.loadRankings();
 });
-
-/* ============================================================
-   LOGS TAB
-   ============================================================ */
-MM.loadLogs = function(page) {
-	page = page || 1;
-	MM.showSkeleton('#logs_table_body');
-	MM.ajax('meesho_get_logs', { page: page, action_type: $('#log_type_filter').val() || '', source: $('#log_source_filter').val() || '' }, function(data) {
-		var html = '';
-		if (!data.logs || data.logs.length === 0) {
-			html = '<tr><td colspan="6" style="text-align:center;">No logs found.</td></tr>';
-		} else {
-			data.logs.forEach(function(l) {
-				var can_undo = l.old_value !== '[Expired]';
-				html += '<tr>'
-					+ '<td>' + l.created_at + '</td>'
-					+ '<td>' + l.action_type + '</td>'
-					+ '<td>' + (l.post_id || '-') + '</td>'
-					+ '<td><span class="mm-badge mm-badge-purple">' + l.source + '</span></td>'
-					+ '<td><small>' + (l.old_value === '[Expired]' ? '<em>Expired</em>' : (l.old_value||'').substring(0,50)) + '</small></td>'
-					+ '<td>' + (can_undo ? '<button class="mm-btn mm-btn-sm mm-btn-outline" onclick="MeeshoMaster.undoAction(' + l.id + ')">↩️ Undo</button>' : '<span class="mm-text-muted">Expired</span>') + '</td>'
-					+ '</tr>';
-			});
-		}
-		$('#logs_table_body').html(html);
-	});
-};
-
-MM.undoAction = function(id) {
-	MM.confirm('Undo Action', 'Are you sure you want to undo this action? The original value will be restored.', function() {
-		MM.ajax('meesho_undo_action', { log_id: id }, function(msg) {
-			MM.toast(msg, 'success');
-			MM.loadLogs();
-		});
-	});
-};
-
-/* ============================================================
-   SETTINGS TAB
-   ============================================================ */
-$(document).on('click', '#btn_save_settings', function(e) {
-	e.preventDefault();
-	var data = $('#meesho_settings_form').serialize();
-	MM.ajax('meesho_save_settings', data, function(msg) { MM.toast(msg, 'success'); });
-});
-
-$(document).on('click', '#btn_test_email', function() {
-	MM.ajax('meesho_test_email', {}, function(msg) { MM.toast(msg, 'success'); });
-});
-
-$(document).on('click', '#btn_generate_llms', function() {
-	MM.ajax('meesho_generate_llms_txt', {}, function(msg) { MM.toast(msg, 'success'); });
-});
-
-/* ============================================================
-   Auto-load on tab render
-   ============================================================ */
-$(document).ready(function() {
-	var params = new URLSearchParams(window.location.search);
-	var tab = params.get('tab') || 'import';
-	if (tab === 'orders') MM.loadOrders();
-	if (tab === 'seo') MM.loadSuggestions();
-	if (tab === 'logs') MM.loadLogs();
-});
-
-})(jQuery);
+})();

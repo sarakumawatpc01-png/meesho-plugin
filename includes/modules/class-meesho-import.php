@@ -381,7 +381,7 @@ class Meesho_Master_Import {
 			update_post_meta( $parent_id, '_meesho_delivery_estimate', sanitize_text_field( $data['delivery_estimate'] ) );
 		}
 
-		// Log import in meesho_products table — dd/mm/yyyy
+		// Log import in mm_products table
 		$import_date = date( 'd/m/Y' );
 		$this->log_import( $meesho_sku, $parent_id, $data['meesho_url'] ?? '', $import_date );
 
@@ -429,7 +429,7 @@ class Meesho_Master_Import {
 
 		// Also check our custom table
 		$existing = $wpdb->get_var( $wpdb->prepare(
-			"SELECT wc_product_id FROM {$wpdb->prefix}meesho_products WHERE meesho_sku = %s LIMIT 1",
+			"SELECT wc_product_id FROM {$products_table} WHERE meesho_sku = %s LIMIT 1",
 			$meesho_sku
 		) );
 		if ( $existing ) {
@@ -545,7 +545,7 @@ class Meesho_Master_Import {
 
 	private function import_reviews( $meesho_sku, $reviews ) {
 		global $wpdb;
-		$table = $wpdb->prefix . 'meesho_reviews';
+		$table = MM_DB::table( 'reviews' );
 
 		foreach ( $reviews as $review ) {
 			// Parse Meesho date format "DD Month YYYY" → dd/mm/yyyy
@@ -640,7 +640,7 @@ class Meesho_Master_Import {
 	private function log_import( $meesho_sku, $wc_product_id, $meesho_url, $import_date ) {
 		global $wpdb;
 		$wpdb->insert(
-			$wpdb->prefix . 'meesho_products',
+			MM_DB::table( 'products' ),
 			array(
 				'meesho_sku'    => $meesho_sku,
 				'wc_product_id' => $wc_product_id,

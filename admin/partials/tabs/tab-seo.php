@@ -2,10 +2,7 @@
 /* Score dashboard */
 global $wpdb;
 $postmeta_table = preg_match( '/^[A-Za-z0-9_]+$/', $wpdb->postmeta ) ? $wpdb->postmeta : $wpdb->prefix . 'postmeta';
-$suggestions_table = $wpdb->prefix . 'meesho_seo_suggestions';
-if ( ! preg_match( '/^[A-Za-z0-9_]+$/', $suggestions_table ) ) {
-	$suggestions_table = $wpdb->prefix . 'meesho_seo_suggestions';
-}
+$suggestions_table = MM_DB::table( 'seo_suggestions' );
 
 $avg_seo = round( floatval( $wpdb->get_var( $wpdb->prepare( "SELECT AVG(CAST(meta_value AS DECIMAL(5,1))) FROM {$postmeta_table} WHERE meta_key = %s", '_meesho_seo_score' ) ) ) );
 $avg_aeo = round( floatval( $wpdb->get_var( $wpdb->prepare( "SELECT AVG(CAST(meta_value AS DECIMAL(5,1))) FROM {$postmeta_table} WHERE meta_key = %s", '_meesho_aeo_score' ) ) ) );

@@ -1,241 +1,225 @@
 <?php
-/**
- * Meesho Master Copilot Module
- * AI chat assistant via OpenRouter. Auto-implement toggle, safety checks,
- * action logging with before/after snapshots. All dates dd/mm/yyyy.
- */
 
 class Meesho_Master_Copilot {
+private $forbidden_tokens = array( 'DROP', 'TRUNCATE', 'DELETE FROM', 'wp_delete_site' );
+private $allowed_actions = array( 'update_meta_title', 'update_meta_desc', 'update_post_title', 'update_post_content', 'unpublish', 'update_product_price', 'apply_seo_suggestion' );
 
-	// Actions Copilot is NEVER allowed to perform
-	private $forbidden_actions = array(
-		'delete_site', 'drop_database', 'reveal_api_keys', 'reveal_passwords',
-		'delete_wp_core', 'modify_wp_config',
-	);
+public function __construct() {
+add_action( 'wp_ajax_meesho_copilot_chat', array( $this, 'ajax_chat' ) );
+add_action( 'wp_ajax_meesho_copilot_apply', array( $this, 'ajax_apply_action' ) );
+add_action( 'wp_ajax_meesho_copilot_history', array( $this, 'ajax_get_history' ) );
+add_action( 'wp_ajax_meesho_copilot_undo_last', array( $this, 'ajax_undo_last' ) );
+}
 
-	public function __construct() {
-		add_action( 'wp_ajax_meesho_copilot_chat', array( $this, 'ajax_chat' ) );
-		add_action( 'wp_ajax_meesho_copilot_apply', array( $this, 'ajax_apply_action' ) );
-		add_action( 'wp_ajax_meesho_copilot_history', array( $this, 'ajax_get_history' ) );
-	}
+public function ajax_chat() {
+meesho_master_verify_ajax_nonce();
+if ( ! current_user_can( 'manage_options' ) ) {
+wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+}
+if ( 'no' === ( new Meesho_Master_Settings() )->get( 'mm_copilot_enabled', 'yes' ) ) {
+wp_send_json_error( array( 'message' => 'Copilot is disabled.' ), 403 );
+}
+$message   = sanitize_textarea_field( wp_unslash( $_POST['message'] ?? '' ) );
+$model     = sanitize_text_field( wp_unslash( $_POST['model'] ?? '' ) );
+$thread_key = sanitize_key( wp_unslash( $_POST['thread_key'] ?? '' ) );
+if ( '' === $message ) {
+wp_send_json_error( array( 'message' => 'Message is required' ), 400 );
+}
+$settings = new Meesho_Master_Settings();
+$api_key  = $settings->get( 'openrouter_api_key' );
+if ( '' === $api_key ) {
+wp_send_json_error( array( 'message' => 'OpenRouter API key not configured' ), 400 );
+}
+if ( '' === $model ) {
+$model = $settings->get( 'ai_model_copilot' ) ?: 'openai/gpt-4o-mini';
+}
+if ( '' === $thread_key ) {
+$thread_key = 'thread_' . wp_generate_uuid4();
+}
+$response = wp_remote_post( 'https://openrouter.ai/api/v1/chat/completions', array(
+'timeout' => 30,
+'headers' => array( 'Authorization' => 'Bearer ' . $api_key, 'Content-Type' => 'application/json' ),
+'body'    => wp_json_encode( array(
+'model'    => $model,
+'messages' => array(
+array( 'role' => 'system', 'content' => $this->build_system_prompt() ),
+array( 'role' => 'user', 'content' => $message ),
+),
+) ),
+) );
+if ( is_wp_error( $response ) ) {
+wp_send_json_error( array( 'message' => $response->get_error_message() ), 400 );
+}
+$body   = json_decode( wp_remote_retrieve_body( $response ), true );
+$reply  = $this->scrub_secret_output( (string) ( $body['choices'][0]['message']['content'] ?? '' ) );
+$actions = $this->extract_actions( $reply );
+$applied = array();
+$auto = 'yes' === $settings->get( 'copilot_auto_implement', 'no' );
+foreach ( $actions as $action ) {
+if ( ! empty( $action['is_destructive'] ) ) {
+continue;
+}
+if ( $auto && $this->is_allowed_action( $action ) ) {
+$result = $this->execute_action( $action );
+if ( ! is_wp_error( $result ) ) {
+$applied[] = $action;
+}
+}
+}
+$this->persist_thread( $thread_key, $message, $reply, $applied );
+wp_send_json_success( array( 'reply' => $reply, 'actions' => $actions, 'auto_applied' => $applied, 'auto_implement' => $auto, 'thread_key' => $thread_key, 'timestamp' => wp_date( 'd/m/Y H:i' ) ) );
+}
 
-	/* ---- Main chat handler ---- */
+private function build_system_prompt() {
+return 'You are Meesho Master Copilot. Only propose allowlisted admin actions. Always emit JSON action blocks in fenced ```json blocks with keys action, params, explanation, is_destructive. Refuse anything involving DROP, TRUNCATE, DELETE FROM, wp_delete_site, secrets, or disabled tools.';
+}
 
-	public function ajax_chat() {
-		meesho_master_verify_ajax_nonce();
-		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
+private function scrub_secret_output( $text ) {
+$settings = new Meesho_Master_Settings();
+foreach ( $settings->get_all() as $key => $value ) {
+if ( preg_match( '/(key|secret|credentials)$/i', $key ) && is_string( $value ) && '' !== $value ) {
+$text = str_replace( $value, '[REDACTED]', $text );
+}
+}
+return $text;
+}
 
-		$message = sanitize_textarea_field( $_POST['message'] ?? '' );
-		$model   = sanitize_text_field( $_POST['model'] ?? '' );
-		if ( empty( $message ) ) wp_send_json_error( 'Message is required' );
+private function extract_actions( $reply ) {
+$actions = array();
+if ( preg_match_all( '/```json\s*(\{.*?\})\s*```/is', $reply, $matches ) ) {
+foreach ( $matches[1] as $block ) {
+$decoded = json_decode( $block, true );
+if ( is_array( $decoded ) && ! empty( $decoded['action'] ) ) {
+$actions[] = $decoded;
+}
+}
+}
+return $actions;
+}
 
-		$settings = new Meesho_Master_Settings();
-		$api_key  = $settings->get( 'openrouter_api_key' );
-		if ( empty( $api_key ) ) wp_send_json_error( 'OpenRouter API key not configured' );
-		if ( empty( $model ) ) $model = $settings->get( 'ai_model_copilot' ) ?: 'openai/gpt-3.5-turbo';
+private function is_allowed_action( $action ) {
+$action_name = strtoupper( (string) ( $action['action'] ?? '' ) );
+foreach ( $this->forbidden_tokens as $token ) {
+if ( false !== strpos( $action_name, $token ) ) {
+return false;
+}
+}
+$params_json = wp_json_encode( $action['params'] ?? array() );
+if ( preg_match( '/^mm_.*(key|secret|credentials)/i', $params_json ) ) {
+return false;
+}
+return in_array( $action['action'] ?? '', $this->allowed_actions, true );
+}
 
-		// Build context (current page data, no API keys)
-		$context = $this->build_context();
+public function execute_action( $action ) {
+if ( ! $this->is_allowed_action( $action ) ) {
+return new WP_Error( 'forbidden', 'This action is not allowed.' );
+}
+$params = $action['params'] ?? array();
+$actor  = 'copilot';
+switch ( $action['action'] ) {
+case 'update_meta_title':
+case 'update_meta_desc':
+$suggestion = array(
+'id' => 0,
+'post_id' => absint( $params['post_id'] ?? 0 ),
+'type' => 'update_meta_title' === $action['action'] ? 'meta_title' : 'meta_desc',
+'current_value' => '',
+'suggested_value' => sanitize_text_field( $params['value'] ?? '' ),
+);
+return ( new MM_SEO_Implementor() )->apply( $suggestion, $actor );
+case 'update_post_title':
+$post_id = absint( $params['post_id'] ?? 0 );
+$new_title = sanitize_text_field( $params['value'] ?? '' );
+( new MM_Logger() )->log_before_change( 'copilot_edit', 'post', $post_id, get_the_title( $post_id ), $new_title, 0, $actor, 'title' );
+wp_update_post( array( 'ID' => $post_id, 'post_title' => $new_title ) );
+return true;
+case 'update_post_content':
+$post_id = absint( $params['post_id'] ?? 0 );
+$new_content = wp_kses_post( $params['value'] ?? '' );
+( new MM_Logger() )->log_before_change( 'copilot_edit', 'post', $post_id, get_post_field( 'post_content', $post_id ), $new_content, 0, $actor, 'content' );
+wp_update_post( array( 'ID' => $post_id, 'post_content' => $new_content ) );
+return true;
+case 'unpublish':
+$post_id = absint( $params['post_id'] ?? 0 );
+( new MM_Logger() )->log_before_change( 'copilot_edit', 'post', $post_id, get_post_status( $post_id ), 'draft', 0, $actor, 'status' );
+wp_update_post( array( 'ID' => $post_id, 'post_status' => 'draft' ) );
+return true;
+case 'update_product_price':
+$product = function_exists( 'wc_get_product' ) ? wc_get_product( absint( $params['post_id'] ?? 0 ) ) : null;
+if ( ! $product ) {
+return new WP_Error( 'not_found', 'Product not found.' );
+}
+$new_price = wc_format_decimal( $params['value'] ?? '' );
+( new MM_Logger() )->log_before_change( 'copilot_edit', 'post', $product->get_id(), $product->get_regular_price(), $new_price, 0, $actor, 'price' );
+$product->set_regular_price( $new_price );
+$product->save();
+return true;
+case 'apply_seo_suggestion':
+return ( new Meesho_Master_SEO() )->apply_suggestion( absint( $params['suggestion_id'] ?? 0 ), $actor );
+}
+return new WP_Error( 'unknown_action', 'Unknown action type.' );
+}
 
-		$system_prompt = "You are Meesho Master Copilot, an AI assistant for WordPress/WooCommerce store management. "
-			. "You can help with: product management, SEO optimization, order tracking, content creation, analytics insights. "
-			. "You CANNOT: delete the WordPress site, drop the database, reveal API keys or passwords. "
-			. "When suggesting destructive actions, always output a structured JSON action block for user approval. "
-			. "Current date: " . date( 'd/m/Y' ) . "\n\nSite context:\n" . $context;
+private function persist_thread( $thread_key, $message, $reply, $applied ) {
+global $wpdb;
+$table = MM_DB::table( 'copilot_threads' );
+$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE thread_key = %s", $thread_key ) );
+$messages = $existing ? json_decode( $existing->messages, true ) : array();
+if ( ! is_array( $messages ) ) {
+$messages = array();
+}
+$messages[] = array( 'role' => 'user', 'content' => $message, 'timestamp' => current_time( 'mysql' ) );
+$messages[] = array( 'role' => 'assistant', 'content' => $reply, 'timestamp' => current_time( 'mysql' ), 'action_taken' => $applied );
+$payload = array( 'title' => wp_trim_words( $message, 8 ), 'messages' => wp_json_encode( $messages ), 'updated_at' => current_time( 'mysql' ) );
+if ( $existing ) {
+$wpdb->update( $table, $payload, array( 'id' => $existing->id ), array( '%s', '%s', '%s' ), array( '%d' ) );
+} else {
+$wpdb->insert( $table, array_merge( array( 'thread_key' => $thread_key, 'created_at' => current_time( 'mysql' ) ), $payload ), array( '%s', '%s', '%s', '%s', '%s' ) );
+}
+}
 
-		$response = wp_remote_post( 'https://openrouter.ai/api/v1/chat/completions', array(
-			'timeout' => 30,
-			'headers' => array(
-				'Authorization' => 'Bearer ' . $api_key,
-				'Content-Type'  => 'application/json',
-			),
-			'body' => wp_json_encode( array(
-				'model'    => $model,
-				'messages' => array(
-					array( 'role' => 'system', 'content' => $system_prompt ),
-					array( 'role' => 'user', 'content' => $message ),
-				),
-				'temperature' => 0.5,
-			) ),
-		) );
+public function ajax_apply_action() {
+meesho_master_verify_ajax_nonce();
+if ( ! current_user_can( 'manage_options' ) ) {
+wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+}
+$action = json_decode( wp_unslash( $_POST['action_data'] ?? '' ), true );
+if ( ! is_array( $action ) ) {
+wp_send_json_error( array( 'message' => 'Invalid action data' ), 400 );
+}
+$result = $this->execute_action( $action );
+if ( is_wp_error( $result ) ) {
+wp_send_json_error( array( 'message' => $result->get_error_message() ), 400 );
+}
+wp_send_json_success( 'Action applied.' );
+}
 
-		if ( is_wp_error( $response ) ) {
-			wp_send_json_error( 'AI service error: ' . $response->get_error_message() );
-		}
+public function ajax_get_history() {
+meesho_master_verify_ajax_nonce();
+if ( ! current_user_can( 'manage_options' ) ) {
+wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+}
+global $wpdb;
+$table = MM_DB::table( 'copilot_threads' );
+$thread_key = sanitize_key( wp_unslash( $_POST['thread_key'] ?? '' ) );
+if ( $thread_key ) {
+$thread = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE thread_key = %s", $thread_key ) );
+wp_send_json_success( $thread ? json_decode( $thread->messages, true ) : array() );
+}
+$rows = $wpdb->get_results( $wpdb->prepare( "SELECT thread_key, title, updated_at FROM {$table} ORDER BY updated_at DESC LIMIT %d", 20 ) );
+wp_send_json_success( $rows );
+}
 
-		$body = wp_remote_retrieve_body( $response );
-		$data = json_decode( $body, true );
-		$reply = $data['choices'][0]['message']['content'] ?? 'Sorry, I could not generate a response.';
-
-		// Check for action blocks in the response
-		$actions = $this->extract_actions( $reply );
-		$auto_implement = $settings->get( 'copilot_auto_implement' ) === 'yes';
-
-		// Auto-implement safe actions if toggle is on
-		$applied = array();
-		if ( $auto_implement && ! empty( $actions ) ) {
-			foreach ( $actions as $action ) {
-				if ( $this->is_safe_action( $action ) ) {
-					$result = $this->execute_action( $action );
-					if ( $result === true ) $applied[] = $action;
-				}
-			}
-		}
-
-		wp_send_json_success( array(
-			'reply'           => $reply,
-			'actions'         => $actions,
-			'auto_applied'    => $applied,
-			'auto_implement'  => $auto_implement,
-			'timestamp'       => date( 'd/m/Y' ),
-		) );
-	}
-
-	/* ---- Build context (no secrets) ---- */
-
-	private function build_context() {
-		$ctx = array();
-		$ctx[] = 'Site: ' . get_bloginfo( 'name' );
-		$ctx[] = 'URL: ' . home_url();
-		$ctx[] = 'WooCommerce: ' . ( class_exists( 'WooCommerce' ) ? 'Active' : 'Not installed' );
-
-		// Product count
-		$product_count = wp_count_posts( 'product' );
-		$ctx[] = 'Published products: ' . ( $product_count->publish ?? 0 );
-
-		// Recent orders
-		$order_count = wp_count_posts( 'shop_order' );
-		$ctx[] = 'Total orders: ' . array_sum( (array) $order_count );
-
-		// Active SEO plugin
-		$seo = new Meesho_Master_SEO();
-		$ctx[] = 'SEO plugin: ' . $seo->detect_seo_plugin();
-
-		return implode( "\n", $ctx );
-	}
-
-	/* ---- Extract action blocks from AI response ---- */
-
-	private function extract_actions( $reply ) {
-		$actions = array();
-		// Look for JSON action blocks: ```json { "action": ... } ```
-		if ( preg_match_all( '/```json\s*(\{[^`]+\})\s*```/s', $reply, $matches ) ) {
-			foreach ( $matches[1] as $json_str ) {
-				$parsed = json_decode( $json_str, true );
-				if ( $parsed && isset( $parsed['action'] ) ) {
-					$actions[] = $parsed;
-				}
-			}
-		}
-		return $actions;
-	}
-
-	/* ---- Safety check ---- */
-
-	private function is_safe_action( $action ) {
-		$type = $action['action'] ?? '';
-		if ( in_array( $type, $this->forbidden_actions, true ) ) return false;
-
-		// Content rewrites need manual approval
-		if ( $type === 'rewrite_content' ) return false;
-
-		// Deletions need manual approval
-		if ( strpos( $type, 'delete' ) !== false ) return false;
-
-		return true;
-	}
-
-	/* ---- Execute an approved action ---- */
-
-	public function execute_action( $action ) {
-		$undo = new Meesho_Master_Undo();
-		$type = $action['action'] ?? '';
-		$post_id = intval( $action['post_id'] ?? 0 );
-
-		switch ( $type ) {
-			case 'update_meta_title':
-			case 'update_meta_desc':
-				$seo = new Meesho_Master_SEO();
-				$keys = $seo->get_meta_keys();
-				$meta_key = ( $type === 'update_meta_title' ) ? $keys['title'] : $keys['desc'];
-				$old = get_post_meta( $post_id, $meta_key, true );
-				$undo->log( 'meta_update', $post_id,
-					wp_json_encode( array( 'meta_key' => $meta_key, 'meta_value' => $old ) ),
-					wp_json_encode( array( 'meta_key' => $meta_key, 'meta_value' => $action['value'] ) ),
-					'copilot'
-				);
-				update_post_meta( $post_id, $meta_key, sanitize_text_field( $action['value'] ) );
-				return true;
-
-			case 'update_post_title':
-				$old = get_the_title( $post_id );
-				$undo->log( 'post_update', $post_id,
-					wp_json_encode( array( 'post_title' => $old ) ),
-					wp_json_encode( array( 'post_title' => $action['value'] ) ),
-					'copilot'
-				);
-				wp_update_post( array( 'ID' => $post_id, 'post_title' => sanitize_text_field( $action['value'] ) ) );
-				return true;
-
-			case 'unpublish':
-				$undo->log( 'post_update', $post_id,
-					wp_json_encode( array( 'post_status' => get_post_status( $post_id ) ) ),
-					wp_json_encode( array( 'post_status' => 'draft' ) ),
-					'copilot'
-				);
-				wp_update_post( array( 'ID' => $post_id, 'post_status' => 'draft' ) );
-				return true;
-
-			case 'update_product_price':
-				if ( function_exists( 'wc_get_product' ) ) {
-					$product = wc_get_product( $post_id );
-					if ( $product ) {
-						$old_price = $product->get_regular_price();
-						$undo->log( 'meta_update', $post_id,
-							wp_json_encode( array( 'meta_key' => '_regular_price', 'meta_value' => $old_price ) ),
-							wp_json_encode( array( 'meta_key' => '_regular_price', 'meta_value' => $action['value'] ) ),
-							'copilot'
-						);
-						$product->set_regular_price( $action['value'] );
-						$product->save();
-					}
-				}
-				return true;
-
-			default:
-				return false;
-		}
-	}
-
-	/* ---- AJAX: Apply a pending action ---- */
-
-	public function ajax_apply_action() {
-		meesho_master_verify_ajax_nonce();
-		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
-
-		$action_json = isset( $_POST['action_data'] ) ? wp_unslash( $_POST['action_data'] ) : '';
-		$action = json_decode( $action_json, true );
-		if ( ! $action || ! isset( $action['action'] ) ) wp_send_json_error( 'Invalid action data' );
-
-		if ( in_array( $action['action'], $this->forbidden_actions, true ) ) {
-			wp_send_json_error( 'This action is not allowed.' );
-		}
-
-		$result = $this->execute_action( $action );
-		$result ? wp_send_json_success( 'Action applied on ' . date( 'd/m/Y' ) )
-		        : wp_send_json_error( 'Unknown action type' );
-	}
-
-	/* ---- AJAX: Chat history ---- */
-
-	public function ajax_get_history() {
-		meesho_master_verify_ajax_nonce();
-		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
-
-		global $wpdb;
-		$logs = $wpdb->get_results( $wpdb->prepare(
-			"SELECT * FROM {$wpdb->prefix}meesho_audit_logs WHERE source = 'copilot' ORDER BY STR_TO_DATE(created_at, '%%d/%%m/%%Y') DESC LIMIT 50"
-		) );
-		wp_send_json_success( $logs );
-	}
+public function ajax_undo_last() {
+meesho_master_verify_ajax_nonce();
+if ( ! current_user_can( 'manage_options' ) ) {
+wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+}
+$result = ( new Meesho_Master_Undo() )->revert_last( get_current_user_id() );
+if ( is_wp_error( $result ) ) {
+wp_send_json_error( array( 'message' => $result->get_error_message() ), 400 );
+}
+wp_send_json_success( 'Last Copilot action undone.' );
+}
 }

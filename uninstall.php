@@ -7,6 +7,17 @@ global $wpdb;
 
 // Drop all plugin-created tables
 $tables = array(
+	'mm_seo_suggestions',
+	'mm_seo_post_scores',
+	'mm_seo_score_history',
+	'mm_audit_log',
+	'mm_seo_runs',
+	'mm_products',
+	'mm_reviews',
+	'mm_orders',
+	'mm_customers',
+	'mm_copilot_threads',
+	'mm_ranking_data',
 	'meesho_seo_suggestions',
 	'meesho_audit_logs',
 	'meesho_run_history',
