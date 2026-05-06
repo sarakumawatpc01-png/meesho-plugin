@@ -16,6 +16,20 @@ define( 'MEESHO_MASTER_VERSION', '6.0.0' );
 define( 'MEESHO_MASTER_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MEESHO_MASTER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
+if ( ! function_exists( 'meesho_master_verify_ajax_nonce' ) ) {
+	function meesho_master_verify_ajax_nonce() {
+		$nonce = '';
+		if ( isset( $_REQUEST['nonce'] ) ) {
+			$nonce = sanitize_text_field( wp_unslash( $_REQUEST['nonce'] ) );
+		}
+
+		$valid = ! empty( $nonce ) && ( wp_verify_nonce( $nonce, 'mm_nonce' ) || wp_verify_nonce( $nonce, 'meesho_nonce' ) );
+		if ( ! $valid ) {
+			wp_send_json_error( 'Invalid nonce', 403 );
+		}
+	}
+}
+
 require_once MEESHO_MASTER_PLUGIN_DIR . 'includes/class-meesho-master.php';
 require_once MEESHO_MASTER_PLUGIN_DIR . 'includes/class-meesho-activator.php';
 require_once MEESHO_MASTER_PLUGIN_DIR . 'includes/class-meesho-deactivator.php';

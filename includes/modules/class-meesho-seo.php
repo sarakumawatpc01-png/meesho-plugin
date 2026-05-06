@@ -279,8 +279,19 @@ class Meesho_Master_SEO {
 	public function generate_llms_txt() {
 		$settings = new Meesho_Master_Settings();
 		$content = "# llms.txt — AI Crawler Access Rules\n" . $settings->get( 'llms_txt_config' );
-		$path = ABSPATH . 'llms.txt';
-		return file_put_contents( $path, $content ) !== false;
+
+		if ( ! function_exists( 'WP_Filesystem' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+		WP_Filesystem();
+
+		global $wp_filesystem;
+		if ( ! $wp_filesystem ) {
+			return false;
+		}
+
+		$path = trailingslashit( ABSPATH ) . 'llms.txt';
+		return (bool) $wp_filesystem->put_contents( $path, $content, FS_CHMOD_FILE );
 	}
 
 	/* ---- Schema injection via wp_head ---- */
@@ -310,14 +321,14 @@ class Meesho_Master_SEO {
 	/* ---- AJAX handlers ---- */
 
 	public function ajax_run_crawl() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 		$this->run_scheduled_batch();
 		wp_send_json_success( 'SEO batch completed on ' . date( 'd/m/Y' ) );
 	}
 
 	public function ajax_get_scores() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 		$post_id = intval( $_POST['post_id'] ?? 0 );
 		$data = $this->crawl_page( $post_id );
@@ -326,7 +337,7 @@ class Meesho_Master_SEO {
 	}
 
 	public function ajax_get_suggestions() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 
 		global $wpdb;
@@ -350,7 +361,7 @@ class Meesho_Master_SEO {
 	}
 
 	public function ajax_apply_suggestion() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 		$id = intval( $_POST['suggestion_id'] ?? 0 );
 		$result = $this->apply_suggestion( $id );
@@ -359,7 +370,7 @@ class Meesho_Master_SEO {
 	}
 
 	public function ajax_apply_all_safe() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 
 		global $wpdb;
@@ -376,7 +387,7 @@ class Meesho_Master_SEO {
 	}
 
 	public function ajax_reject_suggestion() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 
 		global $wpdb;
@@ -390,7 +401,7 @@ class Meesho_Master_SEO {
 	}
 
 	public function ajax_generate_llms_txt() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 		$ok = $this->generate_llms_txt();
 		$ok ? wp_send_json_success( 'llms.txt generated' ) : wp_send_json_error( 'Failed to write llms.txt' );

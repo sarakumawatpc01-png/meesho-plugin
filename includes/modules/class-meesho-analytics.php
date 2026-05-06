@@ -194,7 +194,7 @@ class Meesho_Master_Analytics {
 	/* ---- AJAX handlers ---- */
 
 	public function ajax_get_rankings() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 
 		global $wpdb;
@@ -206,7 +206,7 @@ class Meesho_Master_Analytics {
 	}
 
 	public function ajax_add_keyword() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 
 		$keyword = sanitize_text_field( $_POST['keyword'] ?? '' );
@@ -220,14 +220,14 @@ class Meesho_Master_Analytics {
 	}
 
 	public function ajax_send_report() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 		$this->send_scheduled_report();
 		wp_send_json_success( 'Report sent on ' . date( 'd/m/Y' ) );
 	}
 
 	public function ajax_heatmap_insights() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 
 		$settings = new Meesho_Master_Settings();

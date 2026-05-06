@@ -22,7 +22,7 @@ class Meesho_Master_Copilot {
 	/* ---- Main chat handler ---- */
 
 	public function ajax_chat() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 
 		$message = sanitize_textarea_field( $_POST['message'] ?? '' );
@@ -210,7 +210,7 @@ class Meesho_Master_Copilot {
 	/* ---- AJAX: Apply a pending action ---- */
 
 	public function ajax_apply_action() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 
 		$action_json = isset( $_POST['action_data'] ) ? wp_unslash( $_POST['action_data'] ) : '';
@@ -229,7 +229,7 @@ class Meesho_Master_Copilot {
 	/* ---- AJAX: Chat history ---- */
 
 	public function ajax_get_history() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'Unauthorized' );
 
 		global $wpdb;

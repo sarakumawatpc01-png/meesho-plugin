@@ -219,7 +219,7 @@ class Meesho_Master_Settings {
 	 * -------------------------------------------------------- */
 
 	public function ajax_save_settings() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( 'Unauthorized' );
 		}
@@ -231,7 +231,7 @@ class Meesho_Master_Settings {
 	}
 
 	public function ajax_save_accounts() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( 'Unauthorized' );
 		}
@@ -257,7 +257,7 @@ class Meesho_Master_Settings {
 	}
 
 	public function ajax_test_email() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( 'Unauthorized' );
 		}

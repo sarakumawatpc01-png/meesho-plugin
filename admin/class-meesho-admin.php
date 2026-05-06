@@ -24,7 +24,7 @@ class Meesho_Master_Admin {
 		wp_enqueue_script( $this->plugin_name, MEESHO_MASTER_PLUGIN_URL . 'admin/js/meesho-admin.js', array( 'jquery' ), $this->version, true );
 		wp_localize_script( $this->plugin_name, 'meesho_ajax', array(
 			'ajax_url' => admin_url( 'admin-ajax.php' ),
-			'nonce'    => wp_create_nonce( 'meesho_nonce' ),
+			'nonce'    => wp_create_nonce( 'mm_nonce' ),
 		) );
 	}
 

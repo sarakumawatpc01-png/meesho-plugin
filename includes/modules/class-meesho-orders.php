@@ -85,7 +85,7 @@ class Meesho_Master_Orders {
 	 * ================================================================ */
 
 	public function ajax_get_orders() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( 'Unauthorized' );
 		}
@@ -185,7 +185,7 @@ class Meesho_Master_Orders {
 	 * ================================================================ */
 
 	public function ajax_update_order() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( 'Unauthorized' );
 		}
@@ -344,7 +344,7 @@ class Meesho_Master_Orders {
 	}
 
 	public function ajax_check_cod_risk() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		$order_id = intval( $_POST['wc_order_id'] ?? 0 );
 		if ( ! $order_id ) {
 			wp_send_json_error( 'Invalid order' );
@@ -422,7 +422,7 @@ class Meesho_Master_Orders {
 	 * ================================================================ */
 
 	public function ajax_get_accounts() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		$settings = new Meesho_Master_Settings();
 		$accounts = $settings->get_accounts();
 

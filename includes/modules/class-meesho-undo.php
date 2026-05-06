@@ -187,7 +187,7 @@ class Meesho_Master_Undo {
 	 * -------------------------------------------------------- */
 
 	public function ajax_undo() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( 'Unauthorized' );
 		}
@@ -206,7 +206,7 @@ class Meesho_Master_Undo {
 	}
 
 	public function ajax_get_logs() {
-		check_ajax_referer( 'meesho_nonce', 'nonce' );
+		meesho_master_verify_ajax_nonce();
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( 'Unauthorized' );
 		}
