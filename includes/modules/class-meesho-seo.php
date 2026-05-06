@@ -292,7 +292,7 @@ class Meesho_Master_SEO {
 			return false;
 		}
 
-		$path = trailingslashit( ABSPATH ) . 'llms.txt';
+		$path = ABSPATH . 'llms.txt';
 		return (bool) $wp_filesystem->put_contents( $path, $content, FS_CHMOD_FILE );
 	}
 
