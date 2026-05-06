@@ -38,6 +38,7 @@ if ( ! class_exists( 'MM_Crypto' ) ) {
 				return '';
 			}
 
+			// Minimum: 12 (IV) + 16 (tag) + 1 (ciphertext) = 29 bytes.
 			if ( strlen( $decoded ) < 29 ) {
 				return '';
 			}

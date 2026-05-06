@@ -345,18 +345,19 @@ class Meesho_Master_SEO {
 
 		global $wpdb;
 		$table = $wpdb->prefix . 'meesho_seo_suggestions';
-		$where = 'status = %s';
+		$where_parts = array( 'status = %s' );
 		$params = array( 'pending' );
 
 		if ( ! empty( $_POST['priority'] ) ) {
-			$where .= ' AND priority = %s';
+			$where_parts[] = 'priority = %s';
 			$params[] = sanitize_text_field( $_POST['priority'] );
 		}
 		if ( ! empty( $_POST['type'] ) ) {
-			$where .= ' AND type = %s';
+			$where_parts[] = 'type = %s';
 			$params[] = sanitize_text_field( $_POST['type'] );
 		}
 
+		$where = implode( ' AND ', $where_parts );
 		$query = "SELECT * FROM $table WHERE $where ORDER BY STR_TO_DATE(created_at, '%d/%m/%Y') DESC LIMIT %d";
 		$params[] = 50;
 		$rows = $wpdb->get_results( $wpdb->prepare( $query, $params ) );
