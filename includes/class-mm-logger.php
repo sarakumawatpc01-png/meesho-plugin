@@ -7,7 +7,8 @@ if ( ! class_exists( 'MM_Logger' ) ) {
 			global $wpdb;
 
 			$table = $wpdb->prefix . 'meesho_audit_logs';
-			$today = date( 'd/m/Y' );
+			$now_ts = current_time( 'timestamp' );
+			$today = wp_date( 'd/m/Y', $now_ts );
 
 			return false !== $wpdb->insert(
 				$table,
@@ -19,7 +20,7 @@ if ( ! class_exists( 'MM_Logger' ) ) {
 					'source'      => sanitize_text_field( $source ),
 					'user_id'     => get_current_user_id(),
 					'created_at'  => $today,
-					'expires_at'  => date( 'd/m/Y', strtotime( '+15 days' ) ),
+					'expires_at'  => wp_date( 'd/m/Y', strtotime( '+15 days', $now_ts ) ),
 				),
 				array( '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s' )
 			);
