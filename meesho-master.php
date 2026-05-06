@@ -19,8 +19,8 @@ define( 'MEESHO_MASTER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 if ( ! function_exists( 'meesho_master_verify_ajax_nonce' ) ) {
 	function meesho_master_verify_ajax_nonce() {
 		$nonce = '';
-		if ( isset( $_REQUEST['nonce'] ) ) {
-			$nonce = sanitize_text_field( wp_unslash( $_REQUEST['nonce'] ) );
+		if ( isset( $_POST['nonce'] ) ) {
+			$nonce = sanitize_text_field( wp_unslash( $_POST['nonce'] ) );
 		}
 
 		$valid = ! empty( $nonce ) && ( wp_verify_nonce( $nonce, 'mm_nonce' ) || wp_verify_nonce( $nonce, 'meesho_nonce' ) );
