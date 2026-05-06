@@ -19,6 +19,9 @@ class Meesho_Master {
 	private function load_dependencies() {
 		// Admin
 		require_once MEESHO_MASTER_PLUGIN_DIR . 'admin/class-meesho-admin.php';
+		require_once MEESHO_MASTER_PLUGIN_DIR . 'includes/class-mm-crypto.php';
+		require_once MEESHO_MASTER_PLUGIN_DIR . 'includes/class-mm-logger.php';
+		require_once MEESHO_MASTER_PLUGIN_DIR . 'includes/class-mm-dataforseo.php';
 
 		// Core modules
 		require_once MEESHO_MASTER_PLUGIN_DIR . 'includes/modules/class-meesho-settings.php';
