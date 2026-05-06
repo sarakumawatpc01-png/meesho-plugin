@@ -1,11 +1,14 @@
 <?php
 /* Score dashboard */
 global $wpdb;
-$avg_seo = round( floatval( $wpdb->get_var( "SELECT AVG(CAST(meta_value AS DECIMAL(5,1))) FROM {$wpdb->postmeta} WHERE meta_key = '_meesho_seo_score'" ) ) );
-$avg_aeo = round( floatval( $wpdb->get_var( "SELECT AVG(CAST(meta_value AS DECIMAL(5,1))) FROM {$wpdb->postmeta} WHERE meta_key = '_meesho_aeo_score'" ) ) );
-$avg_geo = round( floatval( $wpdb->get_var( "SELECT AVG(CAST(meta_value AS DECIMAL(5,1))) FROM {$wpdb->postmeta} WHERE meta_key = '_meesho_geo_score'" ) ) );
-$pending  = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}meesho_seo_suggestions WHERE status = 'pending'" ) );
-$applied  = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}meesho_seo_suggestions WHERE status = 'applied'" ) );
+$postmeta_table = preg_match( '/^[A-Za-z0-9_]+$/', $wpdb->postmeta ) ? $wpdb->postmeta : $wpdb->prefix . 'postmeta';
+$suggestions_table = MM_DB::table( 'seo_suggestions' );
+
+$avg_seo = round( floatval( $wpdb->get_var( $wpdb->prepare( "SELECT AVG(CAST(meta_value AS DECIMAL(5,1))) FROM {$postmeta_table} WHERE meta_key = %s", '_meesho_seo_score' ) ) ) );
+$avg_aeo = round( floatval( $wpdb->get_var( $wpdb->prepare( "SELECT AVG(CAST(meta_value AS DECIMAL(5,1))) FROM {$postmeta_table} WHERE meta_key = %s", '_meesho_aeo_score' ) ) ) );
+$avg_geo = round( floatval( $wpdb->get_var( $wpdb->prepare( "SELECT AVG(CAST(meta_value AS DECIMAL(5,1))) FROM {$postmeta_table} WHERE meta_key = %s", '_meesho_geo_score' ) ) ) );
+$pending  = intval( $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$suggestions_table} WHERE status = %s", 'pending' ) ) );
+$applied  = intval( $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$suggestions_table} WHERE status = %s", 'applied' ) ) );
 
 if ( ! function_exists( 'mm_score_class' ) ) {
 	function mm_score_class( $s ) { return $s >= 70 ? 'score-high' : ( $s >= 40 ? 'score-med' : 'score-low' ); }
