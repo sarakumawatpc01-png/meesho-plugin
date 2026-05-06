@@ -283,7 +283,9 @@ class Meesho_Master_SEO {
 		if ( ! function_exists( 'WP_Filesystem' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/file.php';
 		}
-		WP_Filesystem();
+		if ( ! WP_Filesystem() ) {
+			return false;
+		}
 
 		global $wp_filesystem;
 		if ( ! $wp_filesystem ) {
