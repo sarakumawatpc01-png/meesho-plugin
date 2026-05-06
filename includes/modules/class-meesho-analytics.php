@@ -200,7 +200,10 @@ class Meesho_Master_Analytics {
 		global $wpdb;
 		$table = $wpdb->prefix . 'meesho_gsc_snapshots';
 		$snapshots = $wpdb->get_results(
-			"SELECT * FROM $table ORDER BY STR_TO_DATE(snapshot_date, '%d/%m/%Y') DESC LIMIT 100"
+			$wpdb->prepare(
+				"SELECT * FROM $table ORDER BY STR_TO_DATE(snapshot_date, '%d/%m/%Y') DESC LIMIT %d",
+				100
+			)
 		);
 		wp_send_json_success( $snapshots );
 	}

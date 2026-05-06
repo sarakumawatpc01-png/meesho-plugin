@@ -18,7 +18,8 @@ $tables = array(
 );
 
 foreach ( $tables as $table ) {
-	$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}{$table}" );
+	$full_table = $wpdb->prefix . sanitize_key( $table );
+	$wpdb->query( "DROP TABLE IF EXISTS `{$full_table}`" );
 }
 
 // Remove plugin options

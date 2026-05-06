@@ -340,8 +340,8 @@ class Meesho_Master_SEO {
 
 		global $wpdb;
 		$table = $wpdb->prefix . 'meesho_seo_suggestions';
-		$where = "status = 'pending'";
-		$params = array();
+		$where = 'status = %s';
+		$params = array( 'pending' );
 
 		if ( ! empty( $_POST['priority'] ) ) {
 			$where .= ' AND priority = %s';
@@ -352,8 +352,9 @@ class Meesho_Master_SEO {
 			$params[] = sanitize_text_field( $_POST['type'] );
 		}
 
-		$query = "SELECT * FROM $table WHERE $where ORDER BY STR_TO_DATE(created_at, '%d/%m/%Y') DESC LIMIT 50";
-		$rows = ! empty( $params ) ? $wpdb->get_results( $wpdb->prepare( $query, $params ) ) : $wpdb->get_results( $query );
+		$query = "SELECT * FROM $table WHERE $where ORDER BY STR_TO_DATE(created_at, '%d/%m/%Y') DESC LIMIT %d";
+		$params[] = 50;
+		$rows = $wpdb->get_results( $wpdb->prepare( $query, $params ) );
 
 		wp_send_json_success( $rows );
 	}
@@ -373,7 +374,12 @@ class Meesho_Master_SEO {
 
 		global $wpdb;
 		$table = $wpdb->prefix . 'meesho_seo_suggestions';
-		$rows = $wpdb->get_results( "SELECT * FROM $table WHERE status = 'pending'" );
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM $table WHERE status = %s",
+				'pending'
+			)
+		);
 		$applied = 0;
 		foreach ( $rows as $row ) {
 			if ( $this->passes_safety_filter( $row ) ) {

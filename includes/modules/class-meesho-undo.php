@@ -154,7 +154,12 @@ class Meesho_Master_Undo {
 		$table = $wpdb->prefix . 'meesho_audit_logs';
 
 		// Get all rows where expires_at is in the past and old_value is not yet purged
-		$rows = $wpdb->get_results( "SELECT id, expires_at FROM $table WHERE old_value != '[Expired]'" );
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, expires_at FROM $table WHERE old_value != %s",
+				'[Expired]'
+			)
+		);
 
 		$now = time();
 		foreach ( $rows as $row ) {
@@ -215,8 +220,8 @@ class Meesho_Master_Undo {
 		$table = $wpdb->prefix . 'meesho_audit_logs';
 
 		// Filters
-		$where = '1=1';
-		$params = array();
+		$where = '1=%d';
+		$params = array( 1 );
 
 		if ( ! empty( $_POST['action_type'] ) ) {
 			$where .= ' AND action_type = %s';
@@ -233,7 +238,6 @@ class Meesho_Master_Undo {
 
 		// Date range filter (dd/mm/yyyy) — use STR_TO_DATE for sorting
 		$order = "ORDER BY STR_TO_DATE(created_at, '%d/%m/%Y') DESC";
-		$limit = 'LIMIT 50';
 
 		if ( ! empty( $_POST['date_from'] ) ) {
 			$where .= " AND STR_TO_DATE(created_at, '%d/%m/%Y') >= STR_TO_DATE(%s, '%d/%m/%Y')";
@@ -246,19 +250,20 @@ class Meesho_Master_Undo {
 
 		$page   = max( 1, intval( $_POST['page'] ?? 1 ) );
 		$offset = ( $page - 1 ) * 50;
-		$limit  = "LIMIT 50 OFFSET $offset";
 
-		if ( ! empty( $params ) ) {
-			$query = $wpdb->prepare( "SELECT * FROM $table WHERE $where $order $limit", $params );
-		} else {
-			$query = "SELECT * FROM $table WHERE $where $order $limit";
-		}
+		$logs_params   = $params;
+		$logs_params[] = 50;
+		$logs_params[] = $offset;
 
-		$logs  = $wpdb->get_results( $query );
+		$logs = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM $table WHERE $where $order LIMIT %d OFFSET %d",
+				$logs_params
+			)
+		);
+
 		$total = $wpdb->get_var(
-			! empty( $params )
-				? $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE $where", $params )
-				: "SELECT COUNT(*) FROM $table WHERE $where"
+			$wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE $where", $params )
 		);
 
 		wp_send_json_success( array(
